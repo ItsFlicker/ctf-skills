@@ -289,6 +289,24 @@ time.sleep(0.4)
 send(b"id; cat /flag*\n")                        # non-interactive shell, no prompt
 ```
 
+### glibc version applicability
+
+The recipe above is 2.36+; on older glibc the "make it look multi-threaded" step needs a different global.
+
+| glibc | what the fast-path check reads | what the last write must do |
+|---|---|---|
+| **2.36+** | `SINGLE_THREAD_P` = `__libc_single_threaded_internal` (public alias `__libc_single_threaded`) | write `0` to `__libc_single_threaded` (the worked example above) |
+| 2.32 - 2.35 | the variable exists (`<sys/single_threaded.h>` is new in 2.32), but `SINGLE_THREAD_P` still reads `tcbhead_t.multiple_threads` - `fs:0x18` on x86_64 - or the `__libc_multiple_threads` global where `SINGLE_THREAD_BY_GLOBAL` is defined | zeroing `__libc_single_threaded` does nothing; write a **non-zero** int to `fs:0x18` (or that global) |
+| 2.26 - 2.31 | same check, and `__libc_single_threaded` does not exist yet | same: write a non-zero `fs:0x18` |
+| 2.22 - 2.25 | `SYSCALL_CANCEL` exists, but `read`/`write` are still generated `.S` stubs marked `CANCELABLE` | chain is identical; find the wrapper by its `LIBC_CANCEL_ASYNC` call site instead of a `SYSCALL_CANCEL` use |
+| < 2.22 | no `SYSCALL_CANCEL` macro at all | same as above; verify that the build's wrapper reaches `__libc_enable_asynccancel` |
+
+On x86_64 `fs:0x18` sits between `fs:0x10` (`self`) and `fs:0x28` (`stack_guard`) in `tcbhead_t`, so one 4-byte write flips the process onto the multi-threaded path.
+
+`SYSCALL_CANCEL` itself first appears in **glibc 2.22** (originally `SYSCALL_CANCEL(name, ...)`), was simplified to `SYSCALL_CANCEL(...)` in 2.25, and only since **2.26** do the `read`/`write` C wrappers use it. Cancellation of `read`/`write` is much older than the macro - it used to live in the `PSEUDO` assembly stubs - so "no `SYSCALL_CANCEL` in the disassembly" does not mean the call is not a cancellation point.
+
+The concrete addresses in the worked example (`+0x20b040`, `+0x20b068`, `+0x20b088`, `cancelhandling +0x308`, `_Unwind_ForcedUnwind` wrapper `+0x2a630`) are for one specific 2.39 build; re-derive them per build with the steps below.
+
 ### Porting to another libc
 
 1. `system`: `readelf -sW libc.so.6 | grep ' system@@'`.
