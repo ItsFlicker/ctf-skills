@@ -17,6 +17,7 @@
 - [tcache Stashing Unlink Attack](#tcache-stashing-unlink-attack)
 - [Unsafe Unlink to BSS + Top Chunk Consolidation (SECCON 2016)](#unsafe-unlink-to-bss--top-chunk-consolidation-seccon-2016)
 - [Largebin Attack — Dedicated Technique (TravelGraph / Setjmp 2024)](#largebin-attack--dedicated-technique-travelgraph--setjmp-2024)
+- [Allocator Ordering Rules That Break Heap Plans (2.3x)](#allocator-ordering-rules-that-break-heap-plans-23x)
 - [tcache 2.39 Changes — Key, Count, and calloc](#tcache-239-changes--key-count-and-calloc)
 - [House of Tangerine — tcache Count + Unsorted Bin Variant](#house-of-tangerine--tcache-count--unsorted-bin-variant)
 
@@ -613,6 +614,72 @@ malloc(0x500)  # triggers largebin insertion → arbitrary heap write to target
 **Mitigations & detection:**
 - glibc 2.38 tightened `largebin` insertion: early abort if `bk_nextsize->fd_nextsize != bck`. Bypass requires the fake `bk_nextsize` chain to be a valid circular list (self-pointing satisfies).
 - Always check tcache counts first — if tcache bin is not full (count < 7 on 2.39), `free()` goes to tcache, not unsorted/largebin. Drain tcache or use `calloc`-sized allocations to bypass (see tcache 2.39 note).
+
+---
+
+## Allocator Ordering Rules That Break Heap Plans (2.3x)
+
+Most heap chains die on ordering, not on a missing technique. These are the rules a "read the source and go" plan usually gets wrong.
+
+### `_int_malloc` order and what `calloc` skips
+
+- `calloc` calls `_int_malloc` directly and never pops tcache (through 2.40; 2.41+ shares the tcache path). Order inside `_int_malloc`: **smallbin fast path -> unsorted loop -> largebin scan -> top / sysmalloc**.
+- A **0-byte `calloc`** becomes `nb = 0x20`. If the `0x20` smallbin is non-empty it is served by the fast path **without draining the unsorted bin** - the only way to keep an unsorted chunk alive across a call.
+- The unsorted loop has three exits: last-remainder split (small `nb` only), exact size match, or "sorted into a bin".
+- **last-remainder silently splits your chunk.** A chunk only becomes *binned* (its `fd`/`bk` rewritten) when the request is `nb >= 0x410`, i.e. large.
+- Chunks sitting in unsorted carry `fd_nextsize = bk_nextsize = NULL`, so removing one by **exact size match** skips the nextsize repair. That is the watershed between "the poison survived" and "glibc restored it".
+
+### Largebin insertion: the unchecked branch and its five preconditions
+
+The first insertion branch (`size | PREV_INUSE < chunksize (bck->bk)`) executes only
+
+```c
+victim->bk_nextsize = fwd->fd->bk_nextsize;
+fwd->fd->bk_nextsize = victim->bk_nextsize->fd_nextsize = victim;
+```
+
+i.e. **`*(P->bk_nextsize + 0x20) = victim`** with no validation. Preconditions:
+
+1. `P` must be alone in its bin, or be `bin->fd` (the most recently inserted chunk).
+2. The poison must be written **after** `P` is in the bin - insertion resets `fd_nextsize/bk_nextsize` to a self loop.
+3. `chunksize (victim) < chunksize (P)` and both in the same bin index.
+4. No request with `nb <= chunksize (P)` between poison and fire: it unlinks `P` and rewrites `bk_nextsize` back to the self loop, destroying the poison. Use `nb > chunksize (P)` or a small-bin request.
+5. The fire itself needs a large `nb` (see the unsorted rules above).
+
+The second branch (`else`) checks `fwd->bk_nextsize->fd_nextsize == fwd`, so a blind target there must already contain `fwd`.
+
+### House of Orange, as it actually behaves
+
+- glibc frees the old top for you once the forged top satisfies `size >= MINSIZE`, `PREV_INUSE` set, and **`top + size` page aligned**.
+- The freed chunk **keeps its `prev_size`** - the classic way to make a later `buf`/struct pointer equal `fs_base` or any 8-byte target.
+- `av->top` is only reachable when the live buffer sits *behind* it: the top header is then at `buf + nb - 0x10` (prev_size) and `buf + nb - 0x8` (size) - forward and writable.
+- "Forge the top" and "free the current buffer" cannot both happen in a `free (buf); buf = calloc (...)` setter: a buffer adjacent to top merges back into it and its size is rewritten. Design the order first.
+- Every HoO leaves a **dead gap** between the freed old top and the new `av->top` (the old `brk`). Nothing can allocate there; measure the gap before planning the next step.
+
+### The 0x10 wall
+
+The user pointer is `chunk + 0x10`, so a chunk's own `prev_size`/`size` are never writable through its own buffer:
+
+- you cannot forge the size of the chunk you are writing through, so you cannot free *it* with a fake size;
+- you cannot write your own `prev_size`;
+- the chunk whose `prev_size` you control must be a **later** chunk, one glibc frees for you (HoO), or one assembled in the dead gap.
+
+### Pitfall checklist
+
+| symptom | real cause |
+|---|---|
+| geometry is wrong everywhere | planned around `calloc (0, X)` as if `nb = X`; a 0-byte request is `0x20` |
+| chunk never gets binned | `last_remainder` split it, or `nb < 0x410` |
+| `free (): invalid next size (normal)` | the next chunk's size is garbage; forge the next header too and satisfy `inuse_bit_at_offset (next, nextsize)` |
+| a neighbor chunk disappears | the tcache bin for that size was full, so the free consolidated into the neighbor |
+| the poison is silently repaired | an `nb <= size (P)` allocation unlinked `P` (rule 4) |
+| "the hook is there" but nothing works | `__free_hook`/`__malloc_hook` are gone since 2.34 |
+| `PIE = libc + const` was wrong | only true when started through the shipped `ld-linux` (fixed map layout); measure `/proc/pid/maps` |
+| a struct-pointer write vanishes | the setter stores the new `buf` *after* `calloc` and overwrites it - target a `.bss` global, or make `calloc` return NULL |
+| cannot write backwards | indices are unsigned; only forward writes |
+| `size & 1` misread | `PREV_INUSE` describes the **previous** chunk, not this one |
+
+**When to use:** any 2.3x heap challenge with `calloc`-based allocators, House of Orange, unsorted/largebin sorting, or an overflow that only reaches forward from the user buffer.
 
 ---
 

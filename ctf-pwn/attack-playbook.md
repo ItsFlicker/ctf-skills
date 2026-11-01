@@ -19,6 +19,17 @@ Record which entry point reaches dangerous allocations, copies, format sinks, de
 
 Static signals from ELF metadata, libc build, and protection tooling can rank candidate primitives, but they do not prove exploitability by themselves. When the request asks for exploitability or security impact, read [static-signals.md](static-signals.md) before choosing a route.
 
+### Five-minute target checks (glibc/heap targets)
+
+```bash
+strings libc.so.6 | grep 'GNU C Library'          # which allocator generation
+readelf -n bin | grep -iE 'ibt|shstk'             # SHSTK => a ret hijack is not the path
+objdump -d libc.so.6 | grep -c '# *20a1'          # >0 only while malloc hooks still exist (< 2.34)
+grep -E 'bin|heap|libc' /proc/$(pgrep bin)/maps   # is PIE a constant offset from libc?
+```
+
+Start the binary through the shipped loader (`./ld-linux-x86-64.so.2 --library-path . ./bin`) and check whether the PIE and libc mappings stay adjacent across runs - in that launch mode their distance is constant, so one leak gives both. With a normal launch they are far apart; measure instead of assuming.
+
 ## Leak Selection
 
 Identify the smallest leak that defeats the mitigations actually enabled by the target:
@@ -76,6 +87,17 @@ Version-specific modern-libc chains: [nobodyisnobody/docs](https://github.com/no
 | Need stack pivot, ret2libc, syscall ROP, or shellcode | [rop-and-shellcode.md](rop-and-shellcode.md) |
 | Need SROP, modern ROP, vDSO, or seccomp evasion | [rop-advanced.md](rop-advanced.md) |
 | Need exact stack/canary behavior or partial overflows | [overflow-basics.md](overflow-basics.md) |
+
+## Lab Loop: `/proc` Harness, One Cheat at a Time
+
+For allocator targets, build a lab that speaks the real protocol *and* can read/write `/proc/<pid>/mem` - "gdb, but scriptable".
+
+1. Satisfy every precondition except one through `/proc` and get the chain to fire.
+2. Remove one cheat and re-run. The cheat you had to put back is the next primitive to build.
+3. Keep the table `precondition | satisfied by | cheat?` - that table is the exploit plan.
+4. A primitive only counts once the **read** and the **write** direction are both verified; the read path usually leaks libc or the stack for free.
+
+Debugging: `run --library-path . ./bin < /tmp/in > /tmp/out` (redirect to files - `run < ...` drops `--args`). Breakpoints on exported symbols work against a stripped libc, so trust the runtime observation over the C source.
 
 ## Payload Checklist
 
