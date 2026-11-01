@@ -616,6 +616,8 @@ malloc(0x500)  # triggers largebin insertion → arbitrary heap write to target
 
 ---
 
+> **Newer releases:** 2.41-2.43 change or remove several primitives below (fastbin removal, `counts` -> `num_slots`, all-bin double-free scan, largebin `nextsize` check). See [glibc-versions.md](glibc-versions.md) before building a chain on 2.42+.
+
 ## tcache 2.39 Changes — Key, Count, and calloc
 
 **glibc 2.39 tcache layout (x86-64):**
