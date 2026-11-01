@@ -54,7 +54,7 @@ gem install one_gadget seccomp-tools
 
 ## Additional Resources
 
-- [overflow-basics.md](overflow-basics.md) - Stack/global buffer overflow, ret2win, canary bypass, canary byte-by-byte brute force on forking servers, struct pointer overwrite, signed integer bypass, hidden gadgets, stride-based OOB read leak, parser stack overflow via unchecked memcpy length with callee-saved register restoration
+- [overflow-basics.md](overflow-basics.md) - Stack/global buffer overflow, ret2win, canary bypass, canary byte-by-byte brute force on forking servers, struct pointer overwrite, signed integer bypass, hidden gadgets, stride-based OOB read leak, parser stack overflow via unchecked memcpy length with callee-saved register restoration. Also scanf input quirks: a lone `+`/`-` skips a conversion without poisoning the stream (keep the canary, write past it), long-long range truncates to the low 32 bits, and out-of-range saturates to -1
 - [rop-and-shellcode.md](rop-and-shellcode.md) - Core ROP chains (ret2libc, syscall ROP, rdx control, shell interaction), ret2csu, bad character XOR bypass, exotic x86 gadgets (BEXTR/XLAT/STOSB/PEXT), stack pivot via xchg rax,esp, sprintf() gadget chaining for bad character bypass, canary XOR epilogue as RDX zeroing gadget, stub_execveat syscall as execve alternative via read() return value
 - [rop-advanced.md](rop-advanced.md) - Advanced ROP techniques: double stack pivot to BSS via leave;ret, SROP (Sigreturn-Oriented Programming) with UTF-8 constraints, seccomp bypass, RETF architecture switch (x64→x32) for seccomp bypass, shellcode with input reversal, .fini_array hijack, ret2vdso, pwntools template, x32 ABI syscall aliasing for seccomp bypass, time-based blind shellcode exfiltration
 - [format-string.md](format-string.md) - Format string exploitation (leaks, GOT overwrite, blind pwn, filter bypass, canary leak, __free_hook, .rela.plt patching, saved EBP overwrite for .bss pivot, argv[0] overwrite for stack smash info leak, .fini_array loop for multi-stage exploitation, __printf_chk bypass with sequential %p, single-call leak + GOT overwrite, ROT13-encoded format string exploit through input transformation)
@@ -164,6 +164,16 @@ bash -c '{ echo "cmd1"; echo "cmd2"; sleep 1; } | nc host port'
 ## Signed Integer Bypass
 
 **Pattern:** `scanf("%d")` without sign check; negative quantity * price = negative total, bypasses balance check. See [overflow-basics.md](overflow-basics.md).
+
+## scanf Sign-Skip / Truncation Tricks
+
+**Pattern:** a loop fills a stack array with `scanf("%d", &arr[i])` past its bound, or a parsed integer is compared against a positive constant.
+
+- A **lone `+` or `-`** fails the conversion without consuming the stream: that slot keeps its old value (so the canary survives) and the loop continues.
+- Any **other non-digit** poisons the stream - every following `scanf` fails and all remaining input is ignored.
+- Values inside `long long` but not `int` store only the **low 32 bits**; values outside `long long` store **-1 (`0xffffffff`)**.
+
+Use the `+` skip to write only the slots you need: canary untouched, saved RIP takes the win address. See [overflow-basics.md](overflow-basics.md#scanf-input-quirks-skip-truncate-saturate) and [pwnable-tw/dubblesort.md](pwnable-tw/dubblesort.md).
 
 ## Canary-Aware Partial Overflow
 

