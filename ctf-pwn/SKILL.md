@@ -54,32 +54,38 @@ gem install one_gadget seccomp-tools
 
 ## Additional Resources
 
-- [overflow-basics.md](overflow-basics.md) - Stack/global buffer overflow, ret2win, canary bypass, canary byte-by-byte brute force on forking servers, struct pointer overwrite, signed integer bypass, hidden gadgets, stride-based OOB read leak, parser stack overflow via unchecked memcpy length with callee-saved register restoration. Also scanf input quirks: a lone `+`/`-` skips a conversion without poisoning the stream (keep the canary, write past it), long-long range truncates to the low 32 bits, and out-of-range saturates to -1
-- [rop-and-shellcode.md](rop-and-shellcode.md) - Core ROP chains (ret2libc, syscall ROP, rdx control, shell interaction), ret2csu, bad character XOR bypass, exotic x86 gadgets (BEXTR/XLAT/STOSB/PEXT), stack pivot via xchg rax,esp, sprintf() gadget chaining for bad character bypass, canary XOR epilogue as RDX zeroing gadget, stub_execveat syscall as execve alternative via read() return value
-- [rop-advanced.md](rop-advanced.md) - Advanced ROP techniques: double stack pivot to BSS via leave;ret, SROP (Sigreturn-Oriented Programming) with UTF-8 constraints, seccomp bypass, RETF architecture switch (x64→x32) for seccomp bypass, shellcode with input reversal, .fini_array hijack, ret2vdso, pwntools template, x32 ABI syscall aliasing for seccomp bypass, time-based blind shellcode exfiltration, magic gadget `add dword [rbp-0x3d], ebx` from `__do_global_dtors_aux` for relative GOT patching
-- [format-string.md](format-string.md) - Format string exploitation (leaks, GOT overwrite, blind pwn, filter bypass, canary leak, __free_hook, .rela.plt patching, saved EBP overwrite for .bss pivot, argv[0] overwrite for stack smash info leak, .fini_array loop for multi-stage exploitation, __printf_chk bypass with sequential %p, single-call leak + GOT overwrite, ROT13-encoded format string exploit through input transformation)
-- [advanced.md](advanced.md) - Seccomp advanced techniques, UAF, JIT, esoteric GOT, heap overlap via base conversion, tree data structure stack underallocation, ret2dlresolve, kernel exploitation (basic), glibc pthread cancellation -> `_Unwind_ForcedUnwind` indirect-jump takeover when there is no return address to hijack (CET/SHSTK, RELRO GOT)
-- [heap-techniques.md](heap-techniques.md) - House of Apple 2 (+ setcontext SUID variant), House of Einherjar, House of Orange/Spirit/Lore/Force, heap grooming, custom allocators (nginx, talloc), classic unlink, musl libc heap (meta pointer + atexit hijack), tcache stashing unlink attack, unsafe unlink + top chunk consolidation, allocator ordering rules (calloc/unsorted/`last_remainder`, largebin first-branch write, HoO gotchas, 0x10 wall)
-- [heap-techniques-2.md](heap-techniques-2.md) - CTF-writeup heap variants: UAF vtable pointer encoding shell argument, uninitialized chunk residue pointer leak, tcache strcpy null-byte overflow + backward consolidation, adjacent-struct fn-pointer overflow for libc leak + GOT overwrite, hidden-menu tcache poisoning, tcache double-free + fake _IO_FILE vtable stdout hijack, tcache-to-fastbin promotion cross-bin attack, 6-bit index OOB + written_bytes accumulator, IS_MMAPED bit-flip for unsorted bin leak on calloc'd chunk, filename-regex-constrained fastbin via LSB-only heap pointer overwrite, custom allocator unsafe unlink to GOT
-- [heap-fsop.md](heap-fsop.md) - FILE-structure (_IO_FILE) exploitation: fastbin stdout vtable two-stage hijack for PIE + Full RELRO, _IO_buf_base null-byte stdin hijack, glibc 2.24+ _IO_FILE vtable validation bypass, unsorted-bin attack on stdin _IO_buf_end, unsorted-bin corruption via mp_ structure, realloc(ptr, 0) as free() UAF, single-byte reference counter wraparound UAF, House of Some wide-vtable bypass + SomeofHouse automation
-- [glibc-versions.md](glibc-versions.md) - Modern glibc breakage map: 2.41 smallbin-direct free + calloc/tcache, 2.42 fastbin size check / largebin nextsize check / all-bin double-free scan / num_slots / tcache large / lazy tcache init, 2.43 fastbin removal + 16 slots + exact-size large pop, dead-technique matrix and fingerprinting
-- [advanced-exploits.md](advanced-exploits.md) - Advanced exploit techniques (part 1): VM signed comparison, BF JIT shellcode, type confusion, off-by-one index corruption, DNS overflow, ASAN shadow memory, format string with encoding constraints, custom canary preservation, signed integer bypass, canary-aware partial overflow, CSV injection, MD5 preimage gadgets, VM GC UAF slab reuse, path traversal sanitizer bypass, FSOP + seccomp bypass via openat/mmap/write
-- [advanced-exploits-2.md](advanced-exploits-2.md) - Advanced exploit techniques (part 2): bytecode validator bypass via self-modification, io_uring UAF with SQE injection, integer truncation int32->int16, GC null-reference cascading corruption, leakless libc via multi-fgets stdout FILE overwrite, signed/unsigned char underflow heap overflow, XOR keystream brute-force write primitive, tcache pointer decryption heap leak, unsorted bin promotion via forged chunk size, FSOP stdout TLS leak, TLS destructor hijack via `__call_tls_dtors`, custom shadow stack pointer overflow bypass, signed int overflow negative OOB heap write, XSS-to-binary pwn bridge
-- [advanced-exploits-4.md](advanced-exploits-4.md) - Advanced exploit techniques (part 4): Windows SEH overwrite + pushad VirtualAlloc ROP, IAT-relative resolution, detached process shell stability, SeDebugPrivilege SYSTEM escalation, ARM buffer overflow with Thumb shellcode, Forth interpreter system word exploitation, GF(2) Gaussian elimination for multi-pass tcache poisoning, single-bit-flip exploitation primitive (mprotect + iterative code patching), Game of Life shellcode evolution via still-lifes, UAF via menu-driven strdup/free ordering, Windows CFG bypass via system() as valid call target, neural network output as function pointer index OOB, shellcode unique-byte limit bypass via counter overflow
-- [advanced-exploits-3.md](advanced-exploits-3.md) - Advanced exploit techniques (part 3): stack variable overlap / carry corruption OOB, 1-byte overflow via 8-bit loop counter, game AI arithmetic mean OOB read, arbitrary read/write GOT overwrite to shell, stack leak via __environ + memcpy overflow, JIT sandbox escape via uint16 jump truncation, DNS compression pointer stack overflow with multi-question ROP, ELF code signing bypass via program header manipulation, game level format signed/unsigned coordinate mismatch, file descriptor inheritance via missing O_CLOEXEC, sign extension integer underflow in metadata parsing, ROP chain construction with read-only primitive, 4-byte shellcode with timing side-channel via persistent registers, CRC oracle as arbitrary read, UTF-8 case conversion buffer overflow
-- [advanced-exploits-5.md](advanced-exploits-5.md) - Advanced exploit techniques (part 5): data-interpretation exploitation — Chip-8 emulator OOB memory for ret2libc, double-precision float quicksort canary repositioning, bloom filter abs(INT_MIN) negative index OOB write
-- [sandbox-escape.md](sandbox-escape.md) - Custom VM exploitation, FUSE/CUSE devices, busybox/restricted shell, shell tricks, process_vm_readv sandbox bypass, named pipe file size bypass, CPU emulator print opcode Python eval injection (cross-references ctf-misc/pyjails.md for Python jail techniques)
-- [kernel.md](kernel.md) - Linux kernel exploitation fundamentals: environment setup, QEMU debug, kernel stack overflow, canary leak, privilege escalation (ret2usr, kernel ROP), modprobe_path overwrite, core_pattern overwrite, kmalloc size mismatch heap overflow + struct file f_op corruption
-- [kernel-objects.md](kernel-objects.md) - Kernel object catalogue for spray/leak/control-flow: cache size classes, pahole sizing, `GFP_KERNEL` vs `kmalloc-cg-*` isolation history, and per-object layout + alloc/free path for tty_struct/tty_operations/tty_file_private, seq_operations, msg_msg/msg_msgseg, pipe_buffer/pipe_inode_info, sk_buff data, user_key_payload, setxattr/simple_xattr, poll_list, subprocess_info, timerfd_ctx, shm_file_data, ldt_struct (modify_ldt arbitrary read/write), pt_regs kernel-stack ROP, pg_vec, fs_context, plus the objects that cannot be kmalloc-sprayed (cred_jar/filp/key_jar)
-- [kernel-usma.md](kernel-usma.md) - USMA (User-Space Mapping Attack): corrupt a `pg_vec` array so `packet_mmap` maps a kernel text page into userspace, patch a branch (e.g. `ns_capable_setid` in `__sys_setresuid`) - bypasses kCFI/CFI because no indirect call is redirected; offset-free variant via `user_key_payload.rcu.func` and `fs_context` leaks + `__ksymtab` symbol resolution; case studies CVE-2022-34918, N1CTF 2022 praymoon, NCTF 2023 x1key; pitfalls (0x20 noise object, freelist/uffd placement, page-type checks)
-- [kernel-techniques.md](kernel-techniques.md) - Kernel exploitation techniques: tty_struct kROP (fake vtable + stack pivot), AAW via ioctl register control, userfaultfd race stabilization, SLUB allocator internals (freelist hardening/obfuscation), leak via kernel panic, MADV_DONTNEED race window extension (DiceCTF 2026), cross-cache CPU-split attack (DiceCTF 2026), PTE overlap file write (DiceCTF 2026), addr_limit bypass via failed file open for kernel memory read/write, ret2hbp (cpu_entry_area fixed DB_stack as ROP stage + IDT KASLR leak + hw-breakpoint rcx length control, CVE-2023-3640)
-- [pocs/README.md](pocs/README.md) - Offline PoC/exploit notes for the 2026 kernel LPEs (Copy Fail, Fragnesia, PinTheft, DirtyClone, pedit COW, the September network quartet, Januscape): trigger, primitive, setup and cleanup, kept in-tree for environments where only the AI API and the challenge platform are reachable
-- [kernel-cves.md](kernel-cves.md) - 2026 Linux LPE CVE notes (April-October): the page-cache-write family (Copy Fail CVE-2026-31431, Dirty Frag CVE-2026-43284, Fragnesia CVE-2026-46300, PinTheft CVE-2026-43494, DirtyClone CVE-2026-43503), pedit COW CVE-2026-46331, Januscape KVM nested-virt CVE-2026-53359, the September network-stack quartet (DirtyAH6, TUNderflow, PPPoEject, DiagSpill), why page-cache writes bypass CFI/CET/ROP, and how to fingerprint the vulnerable modules on a target
-- [kernel-bypass.md](kernel-bypass.md) - Kernel protection bypass: KASLR/FGKASLR bypass (__ksymtab), prefetch KASLR / EntryBleed (CVE-2022-4543, needs KVM/-cpu host), KPTI bypass (swapgs trampoline, signal handler, modprobe_path/core_pattern via ROP), CET SHSTK/IBT signal-frame bypass, CFI (kCFI) vs USMA, SMEP/SMAP bypass, GDB kernel module debugging, initramfs/virtio-9p workflow, exploit templates, exploit delivery
-- [attack-playbook.md](attack-playbook.md) - Linux userland attack playbook: recon of input/privilege boundaries, leak selection by mitigation, and primitive ranking workflow
-- [static-signals.md](static-signals.md) - Exploit-relevant static signals (libc version, seccomp policy, RELRO/PIE/canary/NX evidence) for exploitability assessment
-- Challenge archive (moved out of this skill): the 43 pwnable.tw writeups now live in the sibling `ctf-pwn-writeups` skill - load it to compare against a known challenge, not as a technique reference
-- [tools-mcp.md](tools-mcp.md) - MCP server integration for pwn: WinDbg MCP session model (`open_cdb_dump`/`open_cdb_remote`/`open_kd_session` + `session_id`), crash-dump triage, in-dump `flag{` memory scanning, live breakpoint/hardware-watchpoint/memory-patch exploitation, `!dh -f` Windows mitigation check (the `checksec` equivalent), kernel-mode token stealing with kd; IDA/Ghidra MCP for exploit development (decompile the vulnerable function first, drop to assembly only for exact gadget bytes)
+**Userland memory corruption**
+- [overflow-basics.md](overflow-basics.md) - stack/global overflow, ret2win, canary leaks (incl. fork brute force), scanf quirks, parser memcpy overflow, struct-pointer overwrite
+- [rop-and-shellcode.md](rop-and-shellcode.md) - ret2libc, ret2csu, syscall ROP, rdx control, bad-char XOR, exotic gadgets, stack pivots
+- [rop-advanced.md](rop-advanced.md) - SROP, seccomp bypass, RETF to x32, `.fini_array`, ret2vdso, magic-gadget GOT patching, one-shot string synthesis
+- [format-string.md](format-string.md) - leaks, GOT/`.fini_array` writes, blind pwn, `__free_hook`, ROT13-transformed input
+- [advanced.md](advanced.md) - ret2dlresolve, JIT/UAF patterns, heap overlap, pthread-cancellation takeover
+
+**Heap and FILE structures**
+- [heap-techniques.md](heap-techniques.md) - House of Apple 2 / Einherjar / Orange / Spirit / Lore / Force, unlink, tcache stash, largebin, allocator ordering rules
+- [heap-techniques-2.md](heap-techniques-2.md) - writeup variants: UAF vtable/pointer encoding, residue leaks, cross-bin, custom allocators
+- [heap-fsop.md](heap-fsop.md) - `_IO_FILE` exploitation, vtable bypass, House of Some (+ SomeofHouse)
+- [glibc-versions.md](glibc-versions.md) - 2.41-2.43 allocator changes, dead/alive matrix, fingerprinting
+
+**Challenge case files** (per-challenge notes, not first-line reference)
+- [advanced-exploits.md](advanced-exploits.md), [advanced-exploits-2.md](advanced-exploits-2.md), [advanced-exploits-3.md](advanced-exploits-3.md), [advanced-exploits-4.md](advanced-exploits-4.md), [advanced-exploits-5.md](advanced-exploits-5.md) - parts 1-5: VM/JIT/type confusion, FSOP/TLS/shadow-stack, environment/format/canary cases, Windows/ARM/Forth/Game-of-Life, data-interpretation cases
+
+**Kernel**
+- [kernel.md](kernel.md) - QEMU setup, stack overflow/canary, ret2usr/kROP, modprobe_path, core_pattern, kmalloc mismatch, io_uring CVE-2024-0582
+- [kernel-objects.md](kernel-objects.md) - spray/leak/hijack catalogue, `kmalloc-cg` isolation, pahole sizing
+- [kernel-techniques.md](kernel-techniques.md) - tty kROP, AAW via ioctl, userfaultfd, SLUB internals, DiceCTF 2026 cross-cache/PTE, ret2hbp
+- [kernel-bypass.md](kernel-bypass.md) - KASLR/FGKASLR, EntryBleed, KPTI, CET, CFI vs USMA, SMEP/SMAP, exploit templates
+- [kernel-usma.md](kernel-usma.md) - USMA: map kernel text into userspace and patch a branch (CFI bypass)
+- [kernel-cves.md](kernel-cves.md) - 2026 LPEs: Copy Fail family, pedit COW, Januscape, September quartet
+- [pocs/README.md](pocs/README.md) - offline PoC/exp notes for those CVEs (no network needed)
+
+**Routing and tooling**
+- [attack-playbook.md](attack-playbook.md) - recon, leak selection by mitigation, primitive ranking
+- [static-signals.md](static-signals.md) - evidence table for exploitability assessment
+- [sandbox-escape.md](sandbox-escape.md) - VM/FUSE/busybox/shell/pipe bypasses
+- [tools-mcp.md](tools-mcp.md) - WinDbg / IDA / Ghidra MCP workflows
+
+**Archive** - the 43 pwnable.tw writeups moved to the sibling `ctf-pwn-writeups` skill; load it to compare against a known challenge, not as a technique reference.
 
 ---
 
@@ -147,88 +153,35 @@ bash -c '{ echo "cmd1"; echo "cmd2"; sleep 1; } | nc host port'
 - Full RELRO -> target `__free_hook`, `__malloc_hook` (glibc < 2.34), or return addresses
 - Stack canary present -> prefer heap-based attacks or leak canary first
 
-## Stack Buffer Overflow
+## Stack Buffer Overflow (quick loop)
 
-1. Find offset: `cyclic 200` then `cyclic -l <value>`
-2. Check protections: `checksec --file=binary`
-3. No PIE + No canary = direct ROP
-4. Canary leak via format string or partial overwrite
-5. Canary brute-force byte-by-byte on forking servers (7*256 attempts max)
+1. Offset: `cyclic 200` then `cyclic -l <value>`; return address is at `rbp + 8`.
+2. `checksec --file=binary` before writing any exploit code.
+3. No PIE + no canary -> direct ROP or ret2win (add a `ret` for 16-byte alignment).
+4. Canary present -> leak it (format string, partial overwrite, or byte-by-byte brute force on a forking server, 256 tries per byte).
+5. Filtered bytes -> XOR-encode the payload or pick gadgets whose addresses survive the filter.
 
-**ret2win with magic value:** Overflow -> `ret` (alignment) -> `pop rdi; ret` -> magic -> win(). **Stack alignment:** SIGSEGV in `movaps` = add extra `ret` gadget. **Offset:** buffer at `rbp - N`, return at `rbp + 8`, total = N + 8. **Input filtering:** assert payload avoids `memmem()` banned strings. **Gadgets:** `ROPgadget --binary binary | grep "pop rdi"`, or pwntools `ROP()` for hidden gadgets in CMP immediates. See [overflow-basics.md](overflow-basics.md) for full exploit code.
+## Pattern Triggers
 
-## Parser Stack Overflow (Unchecked memcpy)
-
-**Pattern:** Custom file parser (PCAP, image, archive) allocates fixed stack buffer but input records can exceed it. `memcpy` copies before length validation, overflowing saved registers and return address. Must restore callee-saved registers: `rbx` to readable memory (BSS), loop counters to exit values, then `ret` gadget + win function. See [overflow-basics.md](overflow-basics.md#parser-stack-overflow-via-unchecked-memcpy-length-metactf-flash-2026).
-
-## Struct Pointer Overwrite (Heap Menu Challenges)
-
-**Pattern:** Menu create/modify/delete on structs with data buffer + pointer. Overflow name into pointer field with GOT address, then write win address via modify. See [overflow-basics.md](overflow-basics.md) for full exploit and GOT target selection table.
-
-## Signed Integer Bypass
-
-**Pattern:** `scanf("%d")` without sign check; negative quantity * price = negative total, bypasses balance check. See [overflow-basics.md](overflow-basics.md).
-
-## scanf Sign-Skip / Truncation Tricks
-
-**Pattern:** a loop fills a stack array with `scanf("%d", &arr[i])` past its bound, or a parsed integer is compared against a positive constant.
-
-- A **lone `+` or `-`** fails the conversion without consuming the stream: that slot keeps its old value (so the canary survives) and the loop continues.
-- Any **other non-digit** poisons the stream - every following `scanf` fails and all remaining input is ignored.
-- Values inside `long long` but not `int` store only the **low 32 bits**; values outside `long long` store **-1 (`0xffffffff`)**.
-
-Use the `+` skip to write only the slots you need: canary untouched, saved RIP takes the win address. See [overflow-basics.md](overflow-basics.md#scanf-input-quirks-skip-truncate-saturate) and [dubblesort](../ctf-pwn-writeups/pwnable-tw/dubblesort.md).
-
-## Canary-Aware Partial Overflow
-
-**Pattern:** Overflow `valid` flag between buffer and canary. Use `./` as no-op path padding for precise length. See [overflow-basics.md](overflow-basics.md) and [advanced.md](advanced.md) for full exploit chain.
-
-## Global Buffer Overflow (CSV Injection)
-
-**Pattern:** Adjacent global variables; overflow via extra CSV delimiters changes filename pointer. See [overflow-basics.md](overflow-basics.md) and [advanced.md](advanced.md) for full exploit.
-
-## ROP Chain Building
-
-Leak libc via `puts@PLT(puts@GOT)`, return to vuln, stage 2 with `system("/bin/sh")`. See [rop-and-shellcode.md](rop-and-shellcode.md) for full two-stage ret2libc pattern, leak parsing, and return target selection.
-
-**DynELF libc discovery:** `pwntools.DynELF(leak_func, pointer_in_libc)` resolves libc symbols remotely without knowing the libc version. See [rop-and-shellcode.md](rop-and-shellcode.md#dynelf-automated-libc-discovery-rc3-ctf-2016).
-
-**Constrained shellcode in small buffers:** When buffer is too small, use `read()` shellcode stub (< 20 bytes) to pull full stage-2 shellcode. See [rop-and-shellcode.md](rop-and-shellcode.md#constrained-shellcode-in-small-buffers-tum-ctf-2016).
-
-**Raw syscall ROP:** When `system()`/`execve()` crash (CET/IBT), use `pop rax; ret` + `syscall; ret` from libc. See [rop-and-shellcode.md](rop-and-shellcode.md).
-
-**ret2csu:** `__libc_csu_init` gadgets control `rdx`, `rsi`, `edi` and call any GOT function — universal 3-argument call without libc gadgets. See [rop-and-shellcode.md](rop-and-shellcode.md#ret2csu--__libc_csu_init-gadgets-crypto-cat).
-
-**Bad char XOR bypass:** XOR payload data with key before writing to `.data`, then XOR back in place with ROP gadgets. Avoids null bytes, newlines, and other filtered characters. See [rop-and-shellcode.md](rop-and-shellcode.md#bad-character-bypass-via-xor-encoding-in-rop-crypto-cat).
-
-**Exotic gadgets (BEXTR/XLAT/STOSB/PEXT):** When standard `mov` write gadgets are unavailable, chain obscure x86 instructions for byte-by-byte memory writes. See [rop-and-shellcode.md](rop-and-shellcode.md#exotic-x86-gadgets--bextrxlatstosbpext-crypto-cat).
-
-**Stack pivot (xchg rax,esp):** Swap stack pointer to attacker-controlled heap/buffer when overflow is too small for full ROP chain. Requires `pop rax; ret` to load pivot address first. See [rop-and-shellcode.md](rop-and-shellcode.md#stack-pivot-via-xchg-raxesp-crypto-cat).
-
-**rdx control:** After `puts()`, rdx is clobbered to 1. Use `pop rdx; pop rbx; ret` from libc, or re-enter binary's read setup + stack pivot. See [rop-and-shellcode.md](rop-and-shellcode.md).
-
-**Canary XOR epilogue as rdx zeroing gadget:** When no `pop rdx; ret` exists, jump into the canary check epilogue `xor rdx, fs:28h` -- it zeros RDX when the canary is intact. See [rop-and-shellcode.md](rop-and-shellcode.md#stack-canary-xor-epilogue-as-rdx-zeroing-gadget-volgactf-2017).
-
-**stub_execveat as execve alternative:** When no `pop rax; ret` exists, use `stub_execveat` (syscall 322/0x142) instead of `execve` -- send exactly 0x142 bytes so `read()` return value sets rax. See [rop-and-shellcode.md](rop-and-shellcode.md#stub_execveat-syscall-as-execve-alternative-asis-ctf-2018).
-
-**Shell interaction:** After `execve`, `sleep(1)` then `sendline(b'cat /flag*')`. See [rop-and-shellcode.md](rop-and-shellcode.md).
-
-## Format String Through Input Transformation
-
-**ROT13-encoded format string:** When input is ROT13/Caesar-transformed before reaching `printf`, pre-encode the format string payload with the inverse transform so it arrives intact. See [format-string.md](format-string.md#format-string-exploit-through-rot13-encoding-sunshinectf-2018).
-
-## Kernel Exploitation
-
-**addr_limit bypass via failed file open:** When a kernel module sets `addr_limit = KERNEL_DS` but fails to restore it on error paths, force the error (e.g., make target file a directory) to retain kernel memory access from userspace `read()`/`write()`. See [kernel-techniques.md](kernel-techniques.md#kernel-addr_limit-bypass-via-failed-file-open-midnight-sun-ctf-2018).
-
-## Sandbox and Emulator Escape
-
-**CPU emulator eval injection:** When an emulator's print opcode uses `eval('"' + buf + '"')` for escape sequences, build `"+__import__("os").system("cmd")#` in emulator memory via ADD opcodes to escape the string and execute Python. See [sandbox-escape.md](sandbox-escape.md#cpu-emulator-print-opcode-python-eval-injection-midnight-sun-ctf-2018).
-
-## Advanced Exploit Primitives
-
-**No return address (CET + full RELRO):** point `fs:0x10` at a fake TCB and patch the libc unwind struct so the next cancellable `read`/`write` reaches `_Unwind_ForcedUnwind`'s `ror/xor/jmp *rax` with `rdi` on `"/bin/sh"` - SHSTK never sees a `ret`. See [advanced.md](advanced.md#control-transfer-without-a-return-address-pthread-cancellation).
-
-**Neural network function pointer OOB:** When a binary uses NN output as an index into a function pointer array without bounds checking, retrain weights/biases to produce an out-of-bounds index that reads a target address from the biases array. See [advanced-exploits-4.md](advanced-exploits-4.md#neural-network-output-as-function-pointer-index-oob-swampctf-2018).
-
-**Shellcode unique-byte limit bypass via counter overflow:** When shellcode is limited to N unique bytes, spray the stack to corrupt the `seen[256]` counter, then re-execute main (skipping `memset`) so the overflowed counter allows arbitrary bytes on the second run. See [advanced-exploits-4.md](advanced-exploits-4.md#shellcode-unique-byte-limit-bypass-via-counter-overflow-blaze-ctf-2018).
+| What the target shows | Read |
+|---|---|
+| `gets`/`strcpy` with the saved RIP in reach | [overflow-basics.md](overflow-basics.md) |
+| canary present, forking server or partial overwrite possible | [overflow-basics.md](overflow-basics.md) (canary sections) |
+| parser copies a record length into a fixed stack buffer before validating | [overflow-basics.md](overflow-basics.md#parser-stack-overflow-via-unchecked-memcpy-length-metactf-flash-2026) |
+| menu app with a struct holding a data pointer | [overflow-basics.md](overflow-basics.md) (struct pointer overwrite) |
+| signed `scanf` value used as a size or price | [overflow-basics.md](overflow-basics.md) (signed bypass) |
+| `scanf` loop fills an array that holds the canary | [overflow-basics.md](overflow-basics.md) (scanf quirks) |
+| overflow reaches a flag between buffer and canary | [overflow-basics.md](overflow-basics.md) / [advanced.md](advanced.md) |
+| adjacent globals, overflow via CSV/token count | [advanced.md](advanced.md) (CSV injection) |
+| libc leak, but `rdx`/`rsi` need control | [rop-and-shellcode.md](rop-and-shellcode.md) (ret2csu, rdx control) |
+| shellcode stage too small for the full payload | [rop-and-shellcode.md](rop-and-shellcode.md) (read stub) |
+| `system`/`execve` crash under CET/IBT | [rop-and-shellcode.md](rop-and-shellcode.md) (raw syscall ROP) |
+| filtered bytes (NUL, newline) | [rop-and-shellcode.md](rop-and-shellcode.md) (XOR encoding) / [format-string.md](format-string.md) |
+| canary check epilogue reachable, no `pop rdx` | [rop-and-shellcode.md](rop-and-shellcode.md) (rdx zeroing) |
+| no `pop rax` for `execve` | [rop-and-shellcode.md](rop-and-shellcode.md) (stub_execveat) |
+| `printf(user_input)` | [format-string.md](format-string.md) |
+| `printf` after ROT13 / input transform | [format-string.md](format-string.md) (ROT13) |
+| seccomp on, need file read but no `execve` | [rop-advanced.md](rop-advanced.md) / [advanced.md](advanced.md) |
+| no return address to hijack (CET + full RELRO) | [advanced.md](advanced.md) (pthread cancellation) |
+| kernel target | [kernel.md](kernel.md), then objects/bypass/techniques |
+| restricted shell, VM, emulator or jail | [sandbox-escape.md](sandbox-escape.md) (`ctf-misc` for pyjails) |
