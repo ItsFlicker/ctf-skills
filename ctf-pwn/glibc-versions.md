@@ -27,7 +27,7 @@ else
   { /* bin_at (smallbin_index (size)), mark_bin, check fwd->bk == bck */ }
 ```
 
-Consequences: the "free an 8th chunk, it lands in unsorted, read `main_arena`" recipe still works for **large** sizes, but a small chunk no longer passes through unsorted - free-to-leak timing shifts, and a forged `bk` now trips `free(): chunks in smallbin corrupted`.
+Consequences: the "free an 8th chunk, it lands in unsorted, read `main_arena`" recipe still works for **large** sizes, but a small chunk no longer passes through unsorted - free-to-leak timing shifts, and a forged `bk` now trips `free(): chunks in smallbin corrupted`. House of Orange follows the same rule: `sysmalloc` frees the old top with `_int_free`, so a top shrunk below `0x400` now lands in a smallbin (or in tcache, which comes first), and only the `>= 0x400` variants still reach the unsorted bin.
 
 **`calloc` now pops tcache** (`226e3b0a`, `tcache_try_malloc`): the 2.39 property "calloc is tcache-neutral, so it grooms without touching counts" is gone. Chains that relied on it (House of Tangerine style) must be re-planned, and a `calloc` that lands on a poisoned chunk zero-fills it.
 
@@ -123,7 +123,7 @@ The per-thread tcache is no longer created on the first `malloc`; it appears on 
 | largebin attack via `bk_nextsize` | yes | yes | **no** (nextsize check) | **no** |
 | unsorted-bin `main_arena` leak | yes | yes (large sizes) | yes | yes |
 | `realloc`-driven bin placement | no | no | **yes** (new) | yes |
-| House of Orange (top to unsorted) | yes | yes | yes | yes - but tcache cap is 16 now |
+| House of Orange (old top released by `sysmalloc`) | yes | yes | yes | yes - destination by size: tcache / smallbin / unsorted |
 | House of Tangerine (calloc grooming) | yes | **no** | **no** | **no** |
 | tcache relative write (`mp_.tcache_bins`) | no | yes | hard | hard; removed in 2.44 |
 | `__free_hook` / `__malloc_hook` | **no** (gone in 2.34) | no | no | no |

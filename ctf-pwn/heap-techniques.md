@@ -318,7 +318,7 @@ alloc_and_write(atexit_list_addr, system_addr, "cat flag")
 
 ## House of Orange
 
-**Pattern:** Trigger unsorted bin allocation without calling `free()`. Overwrite the top chunk size to a small value via heap overflow. Next large allocation fails the top chunk, forces `sysmalloc` to free the old top chunk into unsorted bin. Then corrupt the freed chunk for FSOP or tcache attack.
+**Pattern:** Trigger unsorted bin allocation without calling `free()`. Overwrite the top chunk size to a small value via heap overflow. Next large allocation fails the top chunk, so `sysmalloc` releases the old top through `_int_free` - into which bin depends on that size (below). Then corrupt the freed chunk for FSOP or tcache attack.
 
 ```python
 # Step 1: Overflow to corrupt top chunk size
@@ -327,16 +327,31 @@ alloc_and_write(atexit_list_addr, system_addr, "cat flag")
 edit(0, b'A' * overflow_len + p64(0xc01))  # Fake small top chunk
 
 # Step 2: Request larger than corrupted top size
-# Forces sysmalloc → old top freed into unsorted bin
+# sysmalloc cannot merge the old top, so it calls _int_free on it
 add(0x1000, b'B')  # Triggers the free
 
 # Step 3: finish from the freed top chunk
 # (2.29+: the unsorted-bin bk write is gone - tcache poisoning / overlap / House of Apple 2)
 ```
 
-**Key insight:** House of Orange creates a free chunk without ever calling `free()` - and it is still the cheapest route into the unsorted bin on 2.4x. The corrupted top chunk size must satisfy: `(size & 0xFFF) == 0` (page-aligned end), `size >= MINSIZE`, and `PREV_INUSE` bit set.
+**Which bin the old top lands in.** `sysmalloc` releases it through the ordinary
+`_int_free`, so the *size* picks the destination - the classic unsorted-bin leak
+only works for the last case:
 
-**Requirements:** Heap overflow that can reach top chunk metadata. The core trick - shrink `top` so the next big request fails `sysmalloc` and the *old* top is released into the unsorted bin without ever calling `free()` - still works on 2.39-2.43 (see the dead/alive matrix in [glibc-versions.md](glibc-versions.md)). What is dead is the classic completion: the unsorted-bin `bk` write (blocked since 2.29) and the `_IO_list_all` vtable payload (vtable check since 2.24). Keep the top shrink, then finish with tcache poisoning from the freed top, an overlapped chunk, or House of Apple 2.
+- fits tcache (`<= 0x410` by default, or up to `mp_.tcache_max_bytes`) and that
+  tcache bin is not full -> **tcache** (2.26+). No `main_arena` pointer is
+  written into the chunk, so there is nothing to leak; the chunk still exists,
+  which is enough to chain a tcache poisoning.
+- `< 0x400` with tcache saturated -> **straight into its smallbin** on 2.41+
+  (`e2436d6f`: freed small chunks skip the unsorted bin); on 2.26-2.40 ->
+  unsorted bin first, sorted into that smallbin on the next `malloc`.
+- `>= 0x400` -> **unsorted bin**, then sorted into a largebin on the next
+  `malloc`. This is the case behind the usual `0xc01` / `0xfa1` payloads, and the
+  only one that leaks `main_arena`.
+
+**Key insight:** House of Orange creates a free chunk without ever calling `free()` - and it is still the cheapest way to manufacture a free chunk on 2.4x. The corrupted top chunk size must satisfy: `(size & 0xFFF) == 0` (page-aligned end), `size >= MINSIZE`, and `PREV_INUSE` bit set.
+
+**Requirements:** Heap overflow that can reach top chunk metadata. The core trick - shrink `top` so the next big request fails `sysmalloc` and the *old* top is released into a bin without ever calling `free()` - still works on 2.39-2.43 (see the dead/alive matrix in [glibc-versions.md](glibc-versions.md)). What is dead is the classic completion: the unsorted-bin `bk` write (blocked since 2.29) and the `_IO_list_all` vtable payload (vtable check since 2.24). Keep the top shrink, then finish with tcache poisoning from the freed top, an overlapped chunk, or House of Apple 2.
 
 ---
 
