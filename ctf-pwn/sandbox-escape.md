@@ -297,3 +297,43 @@ Chain with a `push` that stores shellcode bytes at the new pointer, then redirec
 **Key insight:** Any VM primitive that rewrites its own state pointer is an immediate arbitrary-write primitive. Always probe VM opcodes for boundary conditions where the stack pointer itself is addressable.
 
 **References:** HITCON CTF 2018 — Abyss I, writeups 11918-11919
+
+## Fake and Broken Seccomp Filters (verify before designing around them)
+
+A filter in the binary is not a filter in effect. Four failure modes show up constantly in CTF:
+
+1. **It never installs.** `prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &prog)` returns `-EINVAL` when a jump targets past the end of the program, when `PR_SET_NO_NEW_PRIVS` was not set first, or when the arch test is wrong; `seccomp()` fails the same way. The program usually ignores the return value and keeps running unprotected.
+2. **It allows everything.** A `BPF_RET ALLOW` that the last comparison falls through to makes the final `BPF_RET KILL` unreachable.
+3. **It is installed at the wrong time/place:** after the vulnerable read (the ROP already ran), only in the parent, or only in a child that never runs the vulnerable code. Children inherit a filter only if it was installed before the fork.
+4. **Wrong ABI:** 32-bit/x32 syscall numbers (`nr | 0x40000000`, or the i386 ABI) slip past filters that do not validate `arch` or truncate the number.
+
+Five-minute check on the binary (not on the source):
+
+```bash
+seccomp-tools dump ./binary            # the real program: is every KILL reachable?
+strace -f -e trace=prctl,seccomp ./binary   # = -1 EINVAL means "no sandbox"
+```
+
+If `dump` prints nothing and strace shows no successful install, skip the ORW chain and use `execve` / `system` / `openat` freely.
+
+**Case: ez_orw (CCB_CISCN 2025).** A 9-instruction filter, then two `prctl` calls whose return values are ignored. Instruction 2 is `JEQ 0xffffffff, jt=0, jf=6`, and `2 + 1 + 6 = 9` is one past the last instruction (indices 0-8), so the kernel rejects the program: `EINVAL`. Rebuilding the same array and calling `prctl(PR_SET_SECCOMP, 2, &prog)` reproduces `seccomp = -1, errno = 22 (EINVAL)` - there is no sandbox at all, and the overflow is exploited like an unprotected binary.
+
+**Case: therewasneveraman (Spark 2026 Week5).** A valid 10-instruction whitelist (open/read/write/close/exit/exit_group/rt_sigprocmask), ending in `return ALLOW` then `return KILL`. The last comparison is `if (A == exit)` with `jt=0, jf=0`, so both outcomes land on `return ALLOW`; the `return KILL` is unreachable and every syscall is permitted. `seccomp-tools dump` shows it in one screen; the exploit ends with a plain `system("/bin/sh")`.
+
+## PR_SET_DUMPABLE and Seccomp User-Notification Supervisors
+
+`mm->dumpable` (default 1, reset to 0 by `execve` of a setuid binary, clearable with `prctl(PR_SET_DUMPABLE, 0)`) gates **ATTACH-class** access from other processes: `ptrace`, `/proc/<pid>/mem`, `process_vm_readv` / `process_vm_writev` return `EPERM` when the target's dumpable is 0 and the caller lacks `CAP_SYS_PTRACE`. Setting 0 on yourself is always allowed, which makes it an attacker tool as much as a defense.
+
+That matters when the "sandbox" is a second process inspecting the target through seccomp user notification (`SECCOMP_FILTER_FLAG_NEW_LISTENER`, `SECCOMP_IOCTL_NOTIF_RECV` / `NOTIF_SEND`):
+
+- the supervisor gets a notification, reads the target's memory with `process_vm_readv(notif.pid, ...)`, decides allow/deny, and replies;
+- if it **does not check `process_vm_readv`'s return value**, the target can force the copy to fail by setting its own `dumpable = 0`; the supervisor's buffer still holds the previously approved contents and the check passes on stale data.
+
+**Case: JQCTF warmup.** The child installs a user-notification filter and passes the listener fd to the parent; the parent special-cases `open` when `args[0] == 0x13370000`, copying that page with `process_vm_readv` and comparing it with `"dobedobedo"`. The exploit ROP:
+
+1. `open(0x13370000)` with `"dobedobedo"` mapped there - the parent's copy succeeds and the cache holds the magic string (the open itself fails, `ENOENT`);
+2. `prctl(PR_SET_DUMPABLE, 0)` - now the parent's `process_vm_readv` fails with `EPERM`;
+3. `read(0, 0x13370000, ...)` - overwrite the path with `"/flag"`;
+4. `open(0x13370000)` - the copy fails, the return value is ignored, `memcmp` still sees the stale `"dobedobedo"`, so the kernel opens the real `/flag`; read fd 2 and write it out.
+
+The lesson generalizes: when the sandbox is a separate process, the target controls its own dumpable/ptrace state, so every unchecked copy or cached decision becomes a confused-deputy bug. In a kernel ROP `prctl` is syscall 157 with `PR_SET_DUMPABLE = 4`, i.e. one syscall slot.

@@ -82,7 +82,7 @@ gem install one_gadget seccomp-tools
 **Routing and tooling**
 - [attack-playbook.md](attack-playbook.md) - recon, leak selection by mitigation, primitive ranking
 - [static-signals.md](static-signals.md) - evidence table for exploitability assessment
-- [sandbox-escape.md](sandbox-escape.md) - VM/FUSE/busybox/shell/pipe bypasses
+- [sandbox-escape.md](sandbox-escape.md) - VM/FUSE/busybox/shell/pipe bypasses, fake/broken seccomp filters (install failures, unreachable KILL), PR_SET_DUMPABLE vs seccomp user-notification supervisors
 - [tools-mcp.md](tools-mcp.md) - WinDbg / IDA / Ghidra MCP workflows
 
 **Archive** - the 43 pwnable.tw writeups moved to the sibling `ctf-pwn-writeups` skill; load it to compare against a known challenge, not as a technique reference.
@@ -195,3 +195,4 @@ Only design around SHSTK (ret-less pivots, `setcontext`/unwind tricks) after one
 | no return address to hijack (CET + full RELRO) | [advanced.md](advanced.md) (pthread cancellation) |
 | kernel target | [kernel.md](kernel.md), then objects/bypass/techniques |
 | restricted shell, VM, emulator or jail | [sandbox-escape.md](sandbox-escape.md) (`ctf-misc` for pyjails) |
+| seccomp filter, or a supervisor process inspecting you | [sandbox-escape.md](sandbox-escape.md) (fake filters, `PR_SET_DUMPABLE`) |
