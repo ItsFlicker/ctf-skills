@@ -357,7 +357,7 @@ binary   = binary.ljust(0x7000090 & 0xfff, b'\x00') + asm(shellcraft.sh())
 |---|---|
 | `0xfffffe0000000004` | an IDT gate's handler address - a kernel `.text` pointer, i.e. a KASLR leak with any read primitive |
 | `0xfffffe0000010f58` | `DB_stack` frame: the user registers saved when a hardware breakpoint fires in user mode (a `pt_regs`-shaped frame) |
-| `0xfffffe0000010fb0` | `regs.cx` in that frame: the count `copy_user_generic_string` continues with when the breakpoint fires inside `copy_{to,from}_user` |
+| `0xfffffe0000010fb0` | `regs.cx` in that frame: the remaining count of the interrupted string copy - **its unit depends on the build (qwords vs bytes), see below** |
 
 The DB-stack offsets are from the SCTF builds; the frame lives in the per-CPU CEA, so pin the victim to a CPU and confirm the address in gdb (`p/x &regs->cx` inside `exc_debug_kernel`). The IDT leak at the CEA base works across CPUs.
 
@@ -377,6 +377,14 @@ The child pins itself to a CPU, `PTRACE_TRACEME`, `raise(SIGSTOP)`, then fills `
 1. **KASLR leak** - read `0xfffffe0000000004` and subtract the build's IDT offset (`0xffffffff82008e00`, i.e. `base = leak - 0x1008e00`, on the SCTF 5.15 build). No other leak is needed.
 2. **Stack migration** - point `rsp` at the saved frame (`0xfffffe0000010f58`, or `+8` to skip `r15`) and `ret`: the saved registers become the ROP chain.
 3. **Length control** - with a second process spinning writes at `0xfffffe0000010fb0`, win the window between the #DB frame being written and `exc_debug_kernel()` reading `regs->cx`: `uname`'s `copy_to_user` then copies past `struct utsname` (leaking canary and a return address), and `prctl(PR_SET_MM, PR_SET_MM_MAP, ...)`'s `copy_from_user` overflows the kernel stack.
+
+**`rcx` is not always a byte count - check the disassembly first.** The interrupted copy resumes with whatever `rep movs*` sits at the saved RIP, and the two paths disagree on units:
+
+- `copy_user_generic_string` / `copy_user_generic_unrolled` finish with `rep movs QWORD PTR es:[rdi], QWORD PTR ds:[rsi]`, so `rcx` counts **qwords** (8 bytes each);
+- `copy_user_enhanced_fast_string` (ERMS) uses a single `rep movsb`, so `rcx` counts **bytes**;
+- some kernels use the `rep_movs_alternative`/FSRM form, where the direction and the register use differ again.
+
+The stored value is also the **remaining** count after the bytes already copied, not the requested length. So read `rip` from the same frame (or stop in gdb at `exc_debug_kernel`), disassemble around it, and see which `rep movs` variant follows before deciding what to write. The SCTF build was on the qword path, which is why the exp writes `0x400 / 8 = 0x80`; writing `0x400` there would have copied 8 KB instead of 1 KB. On an ERMS build the same exploit has to write `0x400` (bytes), and the same mistake in the other direction silently under-copies and the overflow never happens.
 
 ### Building the chain
 
