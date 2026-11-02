@@ -219,6 +219,12 @@ fake_shstk = flat([pop_rdi_ret, 0, prepare_kernel_cred])
 
 **References:** Wolv / IERAE — *Bypassing Intel CET with Signal Frames* (2024), Black Hat Asia 2024; kernel patch `x86/cet: handle signal shadow stack`.
 
+## CFI (kCFI) and Why USMA Is the Way Around It
+
+`CONFIG_CFI_CLANG` / kCFI places a type hash before every indirectly-callable function and verifies it at each indirect call site. A fake vtable, a hijacked `ops->func`, or a `modprobe_path`-style call is an indirect call to an attacker-chosen address, so the hash has to match - arbitrary gadgets and mismatched callbacks die. What survives is "call a real function with the right prototype" (a `commit_creds`-shaped target, a `__queue_work`-shaped one, ...), which needs a target whose signature you can satisfy.
+
+USMA avoids indirect calls completely: it maps a kernel text page into userspace through `pg_vec` and patches a **direct** branch inside a function that a normal syscall already calls. Nothing is redirected, so no type hash is ever checked. See [kernel-usma.md](kernel-usma.md).
+
 ## SMEP / SMAP Bypass
 
 **SMEP (Supervisor Mode Execution Prevention):** Blocks executing userland pages from kernel mode.
