@@ -93,6 +93,10 @@ grep -E 'CONFIG_(CRYPTO_USER_API_AEAD|XFRM|RDS|NET_SCH_INGRESS|SCTP|TUN|PPPOE)='
 - For Kubernetes/container targets, the interesting question is **which files are shared**: overlayfs lower layers by layer hash, and the runtime binary bind-mounted inside the container (`runc`).
 - A CTF kernel challenge that mirrors these bugs usually removes the leak on purpose: if the module gives you a "write 4 bytes anywhere in a file" style interface, check whether the intended path is `su`/`libc`/`runc`, not a heap object. The heap/ROP catalogue in [kernel-objects.md](kernel-objects.md) and [kernel-techniques.md](kernel-techniques.md) is the wrong toolbox for this class.
 
+## Offline PoC / exploit notes
+
+Contest environments sometimes allow only the AI API and the challenge platform, so the exploit mechanics for these CVEs are kept in-tree: [pocs/README.md](pocs/README.md) (Copy Fail's AF_ALG call sequence and a readable implementation, Fragnesia's one-byte-per-trigger model, PinTheft's RDS+io_uring chain, DirtyClone, pedit COW, the September quartet, Januscape). Use them when the links below are unreachable.
+
 ## References
 
 - Copy Fail: <https://copy.fail/>, CERT/CC VU#260001 <https://kb.cert.org/vuls/id/260001>, Xint "From Pod to Host" <https://xint.io/blog/copy-fail-pod-to-host>
