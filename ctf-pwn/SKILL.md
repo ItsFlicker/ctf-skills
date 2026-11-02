@@ -147,11 +147,21 @@ bash -c '{ echo "cmd1"; echo "cmd2"; sleep 1; } | nc host port'
 | RELRO | Full | GOT is read-only - need alternative targets (hooks, vtables, return addr) |
 | NX | Enabled | Can't execute shellcode on stack/heap - use ROP or ret2win |
 | Canary | Present | Stack smash detected - need leak or avoid stack overflow (use heap) |
+| SHSTK / IBT | Listed by checksec | **Property request, not enforcement** - assume off and verify at runtime (below) |
 
 **Quick decision tree:**
 - Partial RELRO + No PIE -> GOT overwrite (easiest, use fixed addresses)
 - Full RELRO -> target `__free_hook`, `__malloc_hook` (glibc < 2.34), or return addresses
 - Stack canary present -> prefer heap-based attacks or leak canary first
+
+**CET (SHSTK/IBT) is requested by the ELF, not guaranteed by it.** `checksec` reads `GNU_PROPERTY_X86_FEATURE_1_AND`; enforcement additionally needs a CET-capable CPU exposed to the process (QEMU `kvm64`/`qemu64` does not expose it), kernel support (`CONFIG_X86_USER_SHADOW_STACK`, 6.6+ for SHSTK), and the loader actually enabling it. Most CTF targets carry the property with no enforcement, so **assume off** and verify before paying the cost of a shadow-stack-aware chain:
+
+- `arch_prctl(ARCH_SHSTK_STATUS=0x5005, &v)` - bit 0 (`SHSTK_ENABLED`) says it is active; bit 1 is IBT. Returns `-EINVAL` when the kernel has no support.
+- In a shell on the target: `grep x86_Thread_features /proc/self/status` (only present when a feature is active).
+- Behavioural test: a plain `ret`-based ROP that crashes at the first `ret` with SIGSEGV (`si_code = SEGV_CPERR`) is real SHSTK; if it runs, CET is off regardless of what checksec printed.
+- QEMU: check the launch script's `-cpu` model before believing any CET flag; only `host`/`max` can pass it through, and then the guest kernel and glibc still have to enable it.
+
+Only design around SHSTK (ret-less pivots, `setcontext`/unwind tricks) after one of those checks says enabled.
 
 ## Stack Buffer Overflow (quick loop)
 

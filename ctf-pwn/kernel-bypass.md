@@ -169,6 +169,8 @@ See [kernel.md - core_pattern Overwrite](kernel.md#core_pattern-overwrite) for t
 
 ## CET Shadow Stack (SHSTK) and IBT — Signal-Frame Bypass (Wolv / IERAE 2024)
 
+> This section is about **kernel-side** CET. For a userland binary, `checksec` showing SHSTK/IBT is only the ELF request - assume it is not enforced and verify at runtime first ([static-signals.md](static-signals.md#verifying-cet-at-runtime)).
+
 **Protections:**
 - **SHSTK (Shadow Stack):** Hardware shadow stack at `SSP` (shadow stack pointer) — every `CALL` pushes return address to both normal stack and shadow stack; `RET` checks they match. Kernel enforces via `WRSS`/`WRUSS` and `MSR_IA32_PL0_SSP`.
 - **IBT (Indirect Branch Tracking):** Indirect calls/jmps must land on `ENDBR64`.
