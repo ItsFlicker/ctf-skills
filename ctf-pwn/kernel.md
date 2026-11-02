@@ -576,3 +576,7 @@ grep -n "io_buffer_list_put\|pbuf.*ref" io_uring/register.c
 **Key insight:** The bug is *only* in the **kernel-registered PBUF_RING** path (`register`/`unregister`), not the generic userspace SQE `PROVIDE_BUFFERS` path. Many public PoCs confuse the two and attempt to free the SQ ring itself (which is just `mmap`'d userspace memory). Successful exploitation must use `IORING_REGISTER_PBUF_RING` to allocate a kernel `io_buffer_list`, then race `UNREGISTER` against pending `PROVIDE_BUFFERS` — that race is where the UAF lives.
 
 **References:** CVE-2024-0582, KernelCTF 2024, patch `f0b09d80f55e` (Feb 2024).
+
+## Recent Kernel LPEs (2026)
+
+A different attack class surfaced in 2026: local-root bugs whose primitive is a **page-cache write** - Copy Fail, Dirty Frag, Fragnesia, PinTheft, DirtyClone - rather than a corrupted kernel object. No KASLR leak, no ROP, no CFI-valid target; you patch a file (`su`, `libc`, the runtime binary inside a container) and let a legitimate exec do the rest. Dates, subsystems, the network-stack quartet, and the module fingerprinting commands are in [kernel-cves.md](kernel-cves.md).
