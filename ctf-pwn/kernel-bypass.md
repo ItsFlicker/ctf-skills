@@ -79,6 +79,34 @@ void resolve_and_continue() {
 
 ---
 
+## Prefetch KASLR and EntryBleed (CVE-2022-4543)
+
+KPTI strips kernel mappings from the user page table except what the CPU needs before the CR3 switch. Two things stay: the **entry text** (`.entry.text`, cloned by `pti_clone_entry_text()`) and the **cpu_entry_area**. The entry text sits at a fixed offset from the kernel base, and `prefetch` on an unmapped address does not fault - it only walks (or fails to walk) the page tables, which shows up in timing. Scan the 1 GB KASLR window at 2 MB granularity, refine at 4 KB inside the hit slot, and the pages that behave differently are the entry text:
+
+```
+kernel_base = hit_page - ((__entry_text_start - 0xffffffff81000000) & ~0xfff)
+```
+
+`__entry_text_start` comes from the target's `vmlinux` (`nm`/`readelf`), so this needs the image but no runtime leak.
+
+```c
+static inline uint64_t rdtscp64(void) {
+    unsigned lo, hi;
+    __asm__ volatile("rdtscp" : "=a"(lo), "=d"(hi) :: "rcx");
+    return ((uint64_t)hi << 32) | lo;
+}
+static inline uint64_t prefetch_probe(void *p) {
+    uint64_t t0 = rdtscp64();
+    __asm__ volatile("prefetchnta (%0)\n\tprefetcht2 (%0)" :: "r"(p));
+    return rdtscp64() - t0;
+}
+/* per candidate: pin the CPU, take the minimum of ~30 samples, keep the outlier */
+```
+
+**Where it actually works.** The signal is real page-table/TLB timing. QEMU with `-enable-kvm -cpu host` passes the host CPU through, so EntryBleed behaves as on bare metal - SCTF 2023 `moonpray` was built around exactly that setup. With the usual `-cpu kvm64` under TCG the timing is emulated, the signal disappears, and you should go back to a real leak (`user_key_payload.rcu.func`, `fs_context.ops`, or the IDT in the cpu_entry_area). On 6.2+ the cpu_entry_area itself is randomized, but the entry text is still cloned into user page tables, so this leak survives; the same prefetch trick also locates the randomized CEA, which is what [ret2hbp](kernel-techniques.md#ret2hbp-cpu_entry_area-as-a-fixed-rop-stage-sctf-2023) needs on those kernels.
+
+**References:** Will, "EntryBleed: Breaking KASLR under KPTI with Prefetch" - <https://www.willsroot.io/2022/12/entrybleed.html>; SCTF 2023 `moonpray` - <https://github.com/pray77/CVE-2023-3640>.
+
 ## KPTI Bypass Methods
 
 KPTI (Kernel Page Table Isolation) separates kernel and user page tables. A simple `swapgs; iretq` fails because the user page table is not restored. Four bypass approaches:

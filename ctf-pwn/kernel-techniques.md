@@ -348,3 +348,42 @@ binary   = binary.ljust(0x7000090 & 0xfff, b'\x00') + asm(shellcraft.sh())
 **Key insight:** Custom `binfmt_misc`-style loaders are a fertile target because they parse attacker-supplied headers *before* `install_exec_creds` commits the per-exec credential struct. Any primitive that touches `bprm` in that window (OOB read to leak `bprm->cred`, arbitrary `_clear_user` to zero cred fields, `vm_mmap` with controlled flags/prot for kernel-aided RWX) composes into privesc without needing a traditional kernel memory-corruption chain. Always audit `load_*_binary` functions in custom modules for (a) bounds on header offsets and counts, (b) `access_ok`/range checks on `addr`/`length` arguments passed to `_clear_user`/`copy_to_user`, and (c) side-channel info leaks via `printk`.
 
 **References:** CONFidence CTF 2019 Teaser — p4fmt, writeup 13992
+
+## ret2hbp: cpu_entry_area as a Fixed ROP Stage (SCTF 2023)
+
+`cpu_entry_area` (CEA) is the per-CPU region starting at `0xfffffe0000000000`: a GDT page, the entry stack, the TSS, the IST exception stacks (including the debug stack, `DB_stack`), and the debug store. Until 6.2 the CEA mapping is not randomized (fixed by `97e3d26b5e5f`, CVE-2023-3640), so three addresses are constants on a given build:
+
+| address | what it holds |
+|---|---|
+| `0xfffffe0000000004` | an IDT gate's handler address - a kernel `.text` pointer, i.e. a KASLR leak with any read primitive |
+| `0xfffffe0000010f58` | `DB_stack` frame: the user registers saved when a hardware breakpoint fires in user mode (a `pt_regs`-shaped frame) |
+| `0xfffffe0000010fb0` | `regs.cx` in that frame: the count `copy_user_generic_string` continues with when the breakpoint fires inside `copy_{to,from}_user` |
+
+The DB-stack offsets are from the SCTF builds; the frame lives in the per-CPU CEA, so pin the victim to a CPU and confirm the address in gdb (`p/x &regs->cx` inside `exc_debug_kernel`). The IDT leak at the CEA base works across CPUs.
+
+### Arming the breakpoint
+
+A parent sets DR0 to a user address and DR7 to `0xf0101` (enable DR0, exact break, data read/write, 4-byte length) on a traced child:
+
+```c
+ptrace(PTRACE_POKEUSER, pid, offsetof(struct user, u_debugreg), addr);         /* DR0 */
+ptrace(PTRACE_POKEUSER, pid, offsetof(struct user, u_debugreg) + 56, 0xf0101); /* DR7 */
+```
+
+The child pins itself to a CPU, `PTRACE_TRACEME`, `raise(SIGSTOP)`, then fills `r15..r8` with the ROP stage and touches the watched address. The parent `PTRACE_CONT`s; the #DB fires, the CPU pushes the user register frame into the CEA `DB_stack`, and the frame stays there while the child is stopped.
+
+### Three uses
+
+1. **KASLR leak** - read `0xfffffe0000000004` and subtract the build's IDT offset (`0xffffffff82008e00`, i.e. `base = leak - 0x1008e00`, on the SCTF 5.15 build). No other leak is needed.
+2. **Stack migration** - point `rsp` at the saved frame (`0xfffffe0000010f58`, or `+8` to skip `r15`) and `ret`: the saved registers become the ROP chain.
+3. **Length control** - with a second process spinning writes at `0xfffffe0000010fb0`, win the window between the #DB frame being written and `exc_debug_kernel()` reading `regs->cx`: `uname`'s `copy_to_user` then copies past `struct utsname` (leaking canary and a return address), and `prctl(PR_SET_MM, PR_SET_MM_MAP, ...)`'s `copy_from_user` overflows the kernel stack.
+
+### Building the chain
+
+The frame order is `r15, r14, r13, r12, rbp, rbx, r11, r10, r9, r8, rax, rcx, rdx, rsi, rdi, orig_rax, rip, cs, eflags, rsp, ss`, so `r15` is popped first. Load a gadget or value into each register before the trap and pivot into the frame - e.g. `r15 = pop_rdi`, `r14 = init_cred`, `r13 = commit_creds`, `r12 = swapgs_restore_regs_and_return_to_usermode + 0x31`, then the iretq frame (`rip, cs, rflags, rsp, ss`) from `r11/r10/r9/r8/rax`. The child never returns, so the values only have to survive until the trap.
+
+### 6.2 and later
+
+CEA randomization removes the fixed `DB_stack` (that is CVE-2023-3640). The IDT at the CEA base is still not randomized, so the leak survives; the randomized CEA offset has to be recovered first. KPTI maps the CEA into the user page table, so the EntryBleed prefetch scan also finds it (the intended path of SCTF 2023 `moonpray`; see [kernel-bypass.md](kernel-bypass.md#prefetch-kaslr-and-entrybleed-cve-2022-4543)). The unintended path in that challenge was `ret2dir`: pivot into the direct-map alias of a user page instead of the CEA.
+
+**References:** SCTF 2023 `sycrop` / `moonpray` - <https://github.com/pray77/CVE-2023-3640>; Ltfall, "Linux kernel 基础：ret2hbp" - <https://ltfa1l.top/2025/03/03/system/kernel/Linux_kernel9_ret2hbp/>; EntryBleed - <https://www.willsroot.io/2022/12/entrybleed.html>.
