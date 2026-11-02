@@ -1,25 +1,5 @@
 # CTF Pwn - Advanced Techniques
 
-## Table of Contents
-- [Seccomp Advanced Techniques](#seccomp-advanced-techniques)
-  - [openat2 Bypass (New Age Pattern)](#openat2-bypass-new-age-pattern)
-  - [Conditional Buffer Address Restrictions](#conditional-buffer-address-restrictions)
-  - [Shellcode Construction Without Relocations (pwntools)](#shellcode-construction-without-relocations-pwntools)
-  - [Seccomp Analysis from Disassembly](#seccomp-analysis-from-disassembly)
-- [rdx Control in ROP Chains](#rdx-control-in-rop-chains)
-- [Use-After-Free (UAF) Exploitation](#use-after-free-uaf-exploitation)
-- [JIT Compilation Exploits](#jit-compilation-exploits)
-- [Esoteric Language GOT Overwrite](#esoteric-language-got-overwrite)
-- [Heap Overlap via Base Conversion](#heap-overlap-via-base-conversion)
-- [Tree Data Structure Stack Underallocation](#tree-data-structure-stack-underallocation)
-- [ret2dlresolve](#ret2dlresolve)
-- [Control Transfer Without a Return Address (pthread Cancellation)](#control-transfer-without-a-return-address-pthread-cancellation)
-- [Kernel Exploitation](#kernel-exploitation) (basic; see [kernel.md](kernel.md) for full coverage)
-- [9-Byte test+je Timing Leak (hxp 2018)](#9-byte-testje-timing-leak-hxp-2018)
-- [RtlCaptureContext Deterministic Windows Stack Leak (Insomnihack 2017)](#rtlcapturecontext-deterministic-windows-stack-leak-insomnihack-2017)
-- [IEEE 754 Double-as-Shellcode via Exponent Fixing (Kaspersky 2018)](#ieee-754-double-as-shellcode-via-exponent-fixing-kaspersky-2018)
-- [PIE Bypass via Consistent glibc Load Base 0x56555000 (TAMUctf 2019)](#pie-bypass-via-consistent-glibc-load-base-0x56555000-tamuctf-2019)
-
 **See also:** [heap-techniques.md](heap-techniques.md) — House of Apple 2, House of Einherjar, House of Orange/Spirit/Lore/Force, heap grooming, custom allocator exploitation (nginx, talloc), classic unlink, musl libc heap, tcache stashing unlink
 
 ---

@@ -2,16 +2,6 @@
 
 FILE-structure (_IO_FILE) exploitation for libc 2.23-2.27+: fastbin→stdout vtable hijack, _IO_buf_base null byte overwrites, glibc 2.24+ vtable validation bypass, unsorted-bin attacks on FILE fields, and menu-driven UAF / refcount bugs that land through these FILE primitives. For classical heap attacks (House of *, unlink, tcache, musl), see [heap-techniques.md](heap-techniques.md).
 
-## Table of Contents
-- [Fastbin stdout Vtable Two-Stage Hijack for PIE + Full RELRO (ASIS CTF 2017)](#fastbin-stdout-vtable-two-stage-hijack-for-pie--full-relro-asis-ctf-2017)
-- [_IO_buf_base Null Byte Overwrite for stdin Hijack (Tokyo Westerns 2017)](#_io_buf_base-null-byte-overwrite-for-stdin-hijack-tokyo-westerns-2017)
-- [glibc 2.24+ _IO_FILE Vtable Validation Bypass (HITCON 2017)](#glibc-224-_io_file-vtable-validation-bypass-hitcon-2017)
-- [Unsorted Bin Attack on stdin _IO_buf_end (HITCON 2017)](#unsorted-bin-attack-on-stdin-_io_buf_end-hitcon-2017)
-- [Unsorted Bin Corruption via mp_ Structure (HITCON 2017)](#unsorted-bin-corruption-via-mp_-structure-hitcon-2017)
-- [realloc(ptr, 0) as free() for UAF (AceBear 2018)](#reallocptr-0-as-free-for-uaf-acebear-2018)
-- [Single-Byte Reference Counter Wraparound to UAF (WhiteHat Grand Prix 2018)](#single-byte-reference-counter-wraparound-to-uaf-whitehat-grand-prix-2018)
-- [House of Some — Wide-Vtable Check Bypass via a Legit `_IO_file_jumps` Slot (Csome, 2023)](#house-of-some--wide-vtable-check-bypass-via-a-legit-_io_file_jumps-slot-csome-2023)
-
 ---
 
 ## Fastbin stdout Vtable Two-Stage Hijack for PIE + Full RELRO (ASIS CTF 2017)

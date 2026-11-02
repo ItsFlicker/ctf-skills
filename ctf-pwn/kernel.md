@@ -1,35 +1,5 @@
 # CTF Pwn - Linux Kernel Exploitation
 
-## Table of Contents
-- [Environment Setup and Recon](#environment-setup-and-recon)
-  - [QEMU Debug Environment](#qemu-debug-environment)
-  - [Extracting vmlinux](#extracting-vmlinux)
-  - [Kernel Config Checks](#kernel-config-checks)
-  - [FGKASLR Detection](#fgkaslr-detection)
-- [Useful Kernel Structures for Heap Spray](#useful-kernel-structures-for-heap-spray)
-  - [tty_struct (kmalloc-1024)](#tty_struct-kmalloc-1024)
-  - [tty_file_private (kmalloc-32)](#tty_file_private-kmalloc-32)
-  - [poll_list (kmalloc-32 to 1024)](#poll_list-kmalloc-32-to-1024)
-  - [user_key_payload (kmalloc-32 to 1024)](#user_key_payload-kmalloc-32-to-1024)
-  - [setxattr Temporary Buffer (kmalloc-32 to 1024)](#setxattr-temporary-buffer-kmalloc-32-to-1024)
-  - [seq_operations (kmalloc-32)](#seq_operations-kmalloc-32)
-  - [subprocess_info (kmalloc-128)](#subprocess_info-kmalloc-128)
-- [Kernel Stack Overflow and Canary Leak](#kernel-stack-overflow-and-canary-leak)
-- [Privilege Escalation Primitives](#privilege-escalation-primitives)
-  - [ret2usr (No SMEP/SMAP)](#ret2usr-no-smepsmap)
-  - [Kernel ROP with prepare_kernel_cred / commit_creds](#kernel-rop-with-prepare_kernel_cred--commit_creds)
-  - [Saving and Restoring Userland State](#saving-and-restoring-userland-state)
-- [modprobe_path Overwrite](#modprobe_path-overwrite)
-  - [Technique Overview](#technique-overview)
-  - [Bruteforce Without Leak](#bruteforce-without-leak)
-  - [Checking CONFIG_STATIC_USERMODEHELPER](#checking-config_static_usermodehelper)
-- [core_pattern Overwrite](#core_pattern-overwrite)
-- [Kernel Heap Overflow via kmalloc Size Mismatch (PlaidCTF 2013)](#kernel-heap-overflow-via-kmalloc-size-mismatch-plaidctf-2013)
-- [eBPF Verifier Bypass Exploitation (UIUCTF 2021, D^3CTF 2022)](#ebpf-verifier-bypass-exploitation-uiuctf-2021-d3ctf-2022)
-- [User-Kernel-Hypervisor Chain via I/O Port Hypercalls (HITCON 2018)](#user-kernel-hypervisor-chain-via-io-port-hypercalls-hitcon-2018)
-- [ACPI DSDT Shellcode Injection for Privilege Escalation (hxp 2018)](#acpi-dsdt-shellcode-injection-for-privilege-escalation-hxp-2018)
-- [ARM fcntl64 set_fs() CVE-2015-8966 Pipe Exfil (Insomnihack 2019)](#arm-fcntl64-set_fs-cve-2015-8966-pipe-exfil-insomnihack-2019)
-- [io_uring PBUF_RING Use-After-Free — CVE-2024-0582 (KernelCTF 2024)](#io_uring-pbuf_ring-use-after-free--cve-2024-0582-kernelctf-2024)
 For tty_struct kROP (kernel Return-Oriented Programming), userfaultfd race stabilization, SLUB internals, cross-cache attacks, and DiceCTF 2026 kernel patterns, see [kernel-techniques.md](kernel-techniques.md).
 
 For protection bypass techniques (KASLR, FGKASLR, KPTI, SMEP, SMAP), GDB debugging, initramfs workflow, and exploit templates, see [kernel-bypass.md](kernel-bypass.md).

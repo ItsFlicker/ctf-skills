@@ -1,26 +1,5 @@
 # CTF Pwn - Heap Techniques
 
-## Table of Contents
-- [House of Apple 2 — FSOP for glibc 2.34+ (0xFun 2026)](#house-of-apple-2--fsop-for-glibc-234-0xfun-2026)
-  - [setcontext Variant for SUID Binaries (Midnight Flag 2026)](#setcontext-variant-for-suid-binaries-midnight-flag-2026)
-- [House of Einherjar — Off-by-One Null Byte (0xFun 2026)](#house-of-einherjar--off-by-one-null-byte-0xfun-2026)
-- [Heap Exploitation](#heap-exploitation)
-  - [Heap Grooming via Application Operations (Codegate 2013)](#heap-grooming-via-application-operations-codegate-2013)
-- [Custom Allocator Exploitation](#custom-allocator-exploitation)
-  - [talloc Pool Header Forgery for Arbitrary Read/Write (Boston Key Party 2016)](#talloc-pool-header-forgery-for-arbitrary-readwrite-boston-key-party-2016)
-- [Classic Heap Unlink Attack (Crypto-Cat)](#classic-heap-unlink-attack-crypto-cat)
-- [musl libc Heap Exploitation — Meta Pointer + atexit (UNbreakable 2026)](#musl-libc-heap-exploitation--meta-pointer--atexit-unbreakable-2026)
-- [House of Orange](#house-of-orange)
-- [House of Spirit](#house-of-spirit)
-- [House of Lore](#house-of-lore)
-- [House of Force (CSAW CTF 2016)](#house-of-force-csaw-ctf-2016)
-- [tcache Stashing Unlink Attack](#tcache-stashing-unlink-attack)
-- [Unsafe Unlink to BSS + Top Chunk Consolidation (SECCON 2016)](#unsafe-unlink-to-bss--top-chunk-consolidation-seccon-2016)
-- [Largebin Attack — Dedicated Technique (TravelGraph / Setjmp 2024)](#largebin-attack--dedicated-technique-travelgraph--setjmp-2024)
-- [Allocator Ordering Rules That Break Heap Plans (2.3x)](#allocator-ordering-rules-that-break-heap-plans-23x)
-- [tcache 2.39 Changes — Key, Count, and calloc](#tcache-239-changes--key-count-and-calloc)
-- [House of Tangerine — tcache Count + Unsorted Bin Variant](#house-of-tangerine--tcache-count--unsorted-bin-variant)
-
 For CTF-specific UAF, tcache, and custom-allocator writeup variants — UAF vtable pointer encoding, uninitialized chunk residue leak, tcache strcpy null-byte overflow, adjacent-struct fn-pointer overflow, hidden menu tcache poisoning, tcache double-free stdout hijack, tcache-to-fastbin promotion, 6-bit OOB accumulator, IS_MMAPED bit-flip, filename-regex LSB fastbin, and custom-allocator unsafe unlink — see [heap-techniques-2.md](heap-techniques-2.md).
 
 For FILE-structure (_IO_FILE) exploitation — fastbin stdout vtable hijack, _IO_buf_base null-byte overwrite, glibc 2.24+ vtable validation bypass, unsorted-bin attacks on stdin FILE fields, realloc-as-free UAF, and refcount wraparound — see [heap-fsop.md](heap-fsop.md).
@@ -260,7 +239,7 @@ payload = flat({
 
 ## Classic Heap Unlink Attack (Crypto-Cat)
 
-**When to use:** Old glibc (< 2.26, no tcache) or educational heap challenges. Overflow one heap chunk's metadata to corrupt the next chunk's `prev_size` and `size` fields, then trigger an unlink during `free()` that writes an arbitrary value to an arbitrary address.
+**When to use:** Any glibc version. Overflow one heap chunk's metadata to corrupt the next chunk's `prev_size` and `size` fields, then trigger an unlink during `free()` that writes an arbitrary value to an arbitrary address. What changed after 2.26 is the *setup*, not the primitive: `unlink_chunk` still enforces `fd->bk == p && bk->fd == p` (it always did) plus the `prev_size`/`chunksize` cross-check, so the fake chunk's links must resolve to something that already points back at it - a global pointer array slot, a chunk you still control, or a self-referencing pair. Satisfy that and the unlink writes land exactly as on 2.23.
 
 **How dlmalloc unlink works:**
 ```c
@@ -298,7 +277,7 @@ payload += p64(b_size & ~1)   # overwrite B's size, clear PREV_INUSE bit
 # After free(B): target_addr now contains a pointer we control
 ```
 
-**Modern mitigations:** glibc 2.26+ added safe-unlinking checks (`FD->bk == P && BK->fd == P`). For modern heaps, use tcache poisoning, House of Apple 2, or House of Einherjar instead.
+**Still alive on 2.3x/2.4x:** the double-linked-list check is old - it is *not* a 2.26 addition, and how2heap still ships a working `unsafe_unlink` for current glibc. Tcache poisoning is cheaper when the binary already gives you `free()` plus a UAF; unlink wins when you only have a write primitive and want a single-shot pointer write, or when you can forge the links of a large/small bin chunk you are about to consolidate (largebin, House of Einherjar).
 
 **Key insight:** The unlink macro performs two pointer writes. By controlling `fd` and `bk` in a fake chunk, you get a constrained write-what-where: each location gets the other's value. Classic use: overwrite a GOT entry with the address of a win function or shellcode.
 
@@ -351,13 +330,13 @@ edit(0, b'A' * overflow_len + p64(0xc01))  # Fake small top chunk
 # Forces sysmalloc → old top freed into unsorted bin
 add(0x1000, b'B')  # Triggers the free
 
-# Step 3: Unsorted bin attack or FSOP from here
-# Overwrite _IO_list_all via unsorted bin's bk pointer
+# Step 3: finish from the freed top chunk
+# (2.29+: the unsorted-bin bk write is gone - tcache poisoning / overlap / House of Apple 2)
 ```
 
-**Key insight:** House of Orange creates a free chunk without ever calling `free()` — essential when the binary has no delete/free functionality. The corrupted top chunk size must satisfy: `(size & 0xFFF) == 0` (page-aligned end), `size >= MINSIZE`, and `PREV_INUSE` bit set.
+**Key insight:** House of Orange creates a free chunk without ever calling `free()` - and it is still the cheapest route into the unsorted bin on 2.4x. The corrupted top chunk size must satisfy: `(size & 0xFFF) == 0` (page-aligned end), `size >= MINSIZE`, and `PREV_INUSE` bit set.
 
-**Requirements:** Heap overflow that can reach top chunk metadata. glibc < 2.26 for classic variant; modern versions need FSOP chain (House of Apple 2).
+**Requirements:** Heap overflow that can reach top chunk metadata. The core trick - shrink `top` so the next big request fails `sysmalloc` and the *old* top is released into the unsorted bin without ever calling `free()` - still works on 2.39-2.43 (see the dead/alive matrix in [glibc-versions.md](glibc-versions.md)). What is dead is the classic completion: the unsorted-bin `bk` write (blocked since 2.29) and the `_IO_list_all` vtable payload (vtable check since 2.24). Keep the top shrink, then finish with tcache poisoning from the freed top, an overlapped chunk, or House of Apple 2.
 
 ---
 

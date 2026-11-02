@@ -2,19 +2,6 @@
 
 Continuation of [heap-techniques.md](heap-techniques.md). Part 2 collects CTF-specific UAF, tcache, and custom-allocator variants drawn from individual writeups.
 
-## Table of Contents
-- [UAF Vtable Pointer Encoding Shell Argument (BCTF 2017)](#uaf-vtable-pointer-encoding-shell-argument-bctf-2017)
-- [Uninitialized Chunk Residue Pointer Leak (picoCTF 2018)](#uninitialized-chunk-residue-pointer-leak-picoctf-2018)
-- [tcache strcpy Null-Byte Overflow + Backward Consolidation (HITCON 2018)](#tcache-strcpy-null-byte-overflow--backward-consolidation-hitcon-2018)
-- [Adjacent-Struct fn-Pointer Overflow for Libc Leak + GOT Overwrite (RITSEC 2018)](#adjacent-struct-fn-pointer-overflow-for-libc-leak--got-overwrite-ritsec-2018)
-- [Hidden Menu Option 1337 for Tcache Poisoning (FireShell 2019)](#hidden-menu-option-1337-for-tcache-poisoning-fireshell-2019)
-- [Tcache Double-Free + Fake _IO_FILE Vtable Stdout Hijack (BCTF 2018)](#tcache-double-free--fake-_io_file-vtable-stdout-hijack-bctf-2018)
-- [Tcache-to-Fastbin Promotion Cross-Bin Attack (BCTF 2018)](#tcache-to-fastbin-promotion-cross-bin-attack-bctf-2018)
-- [6-Bit Index OOB + written_bytes Accumulator for Fn-Pointer Increment (Codegate 2019)](#6-bit-index-oob--written_bytes-accumulator-for-fn-pointer-increment-codegate-2019)
-- [IS_MMAPED Bit-Flip for Unsorted Bin Leak on Calloc'd Chunk (0CTF 2017)](#is_mmaped-bit-flip-for-unsorted-bin-leak-on-callocd-chunk-0ctf-2017)
-- [Filename-Regex-Constrained Fastbin via LSB-Only Heap Pointer Overwrite (BSidesSF 2019)](#filename-regex-constrained-fastbin-via-lsb-only-heap-pointer-overwrite-bsidessf-2019)
-- [Custom Allocator Unsafe Unlink to GOT (DEF CON Qualifier 2014)](#custom-allocator-unsafe-unlink-to-got-def-con-qualifier-2014)
-
 For FILE-structure (_IO_FILE) exploitation see [heap-fsop.md](heap-fsop.md). For the foundational houses (Apple 2, Einherjar, Orange, Spirit, Lore, Force), unsafe unlink, tcache stashing, and musl, see [heap-techniques.md](heap-techniques.md).
 
 ---

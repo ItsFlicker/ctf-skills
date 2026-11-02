@@ -1,25 +1,5 @@
 # CTF Pwn - Kernel Protection Bypass
 
-## Table of Contents
-- [KASLR and FGKASLR Bypass](#kaslr-and-fgkaslr-bypass)
-  - [KASLR Bypass via Stack Leak (hxp CTF 2020)](#kaslr-bypass-via-stack-leak-hxp-ctf-2020)
-  - [FGKASLR Bypass (hxp CTF 2020)](#fgkaslr-bypass-hxp-ctf-2020)
-- [KPTI Bypass Methods](#kpti-bypass-methods)
-  - [Method 1: swapgs_restore Trampoline](#method-1-swapgs_restore-trampoline)
-  - [Method 2: Signal Handler (SIGSEGV)](#method-2-signal-handler-sigsegv)
-  - [Method 3: modprobe_path via ROP](#method-3-modprobe_path-via-rop)
-  - [Method 4: core_pattern via ROP](#method-4-core_pattern-via-rop)
-- [CET Shadow Stack (SHSTK) and IBT — Signal-Frame Bypass (Wolv / IERAE 2024)](#cet-shadow-stack-shstk-and-ibt--signal-frame-bypass-wolv--ierae-2024)
-- [SMEP / SMAP Bypass](#smep--smap-bypass)
-- [KPTI / SMEP / SMAP Quick Reference](#kpti--smep--smap-quick-reference)
-- [GDB Kernel Module Debugging](#gdb-kernel-module-debugging)
-- [Initramfs and virtio-9p Workflow](#initramfs-and-virtio-9p-workflow)
-- [Finding Symbol Offsets Without CONFIG_KALLSYMS_ALL](#finding-symbol-offsets-without-config_kallsyms_all)
-- [Exploit Templates](#exploit-templates)
-  - [Full Kernel ROP Template (SMEP + KPTI)](#full-kernel-rop-template-smep--kpti)
-  - [ret2usr Template (No SMEP/SMAP)](#ret2usr-template-no-smepsmap)
-- [Exploit Delivery](#exploit-delivery)
-
 ---
 
 ## KASLR and FGKASLR Bypass

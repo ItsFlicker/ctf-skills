@@ -1,21 +1,5 @@
 # CTF Pwn - Kernel Exploitation Techniques
 
-## Table of Contents
-- [tty_struct RIP Hijack and kROP](#tty_struct-rip-hijack-and-krop)
-  - [kROP via Fake Vtable on tty_struct](#krop-via-fake-vtable-on-tty_struct)
-  - [AAW via ioctl Register Control](#aaw-via-ioctl-register-control)
-- [userfaultfd Race Stabilization](#userfaultfd-race-stabilization)
-  - [Alternative Race Techniques (uffd Disabled)](#alternative-race-techniques-uffd-disabled)
-- [SLUB Allocator Internals](#slub-allocator-internals)
-  - [Freelist Pointer Hardening](#freelist-pointer-hardening)
-  - [Freelist Obfuscation (CONFIG_SLAB_FREELIST_HARDEN)](#freelist-obfuscation-config_slab_freelist_harden)
-- [Leak via Kernel Panic](#leak-via-kernel-panic)
-- [Race Window Extension via MADV_DONTNEED + mprotect (DiceCTF 2026)](#race-window-extension-via-madv_dontneed--mprotect-dicectf-2026)
-- [Cross-Cache Attack via CPU-Split Strategy (DiceCTF 2026)](#cross-cache-attack-via-cpu-split-strategy-dicectf-2026)
-- [PTE Overlap Primitive for File Write (DiceCTF 2026)](#pte-overlap-primitive-for-file-write-dicectf-2026)
-- [Kernel addr_limit Bypass via Failed File Open (Midnight Sun CTF 2018)](#kernel-addr_limit-bypass-via-failed-file-open-midnight-sun-ctf-2018)
-- [Custom binfmt Loader OOB Read + clear_user for Privesc (CONFidence Teaser 2019)](#custom-binfmt-loader-oob-read--clear_user-for-privesc-confidence-teaser-2019)
-
 For kernel fundamentals (environment setup, heap spray structures, stack overflow, privilege escalation, modprobe_path, core_pattern), see [kernel.md](kernel.md).
 
 For protection bypass techniques (KASLR, FGKASLR, KPTI, SMEP, SMAP), GDB debugging, initramfs workflow, and exploit templates, see [kernel-bypass.md](kernel-bypass.md).

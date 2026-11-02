@@ -1,32 +1,5 @@
 # CTF Pwn - Advanced ROP Techniques
 
-## Table of Contents
-- [Double Stack Pivot to BSS via leave;ret (Midnightflag 2026)](#double-stack-pivot-to-bss-via-leaveret-midnightflag-2026)
-- [SROP with UTF-8 Payload Constraints (DiceCTF 2026)](#srop-with-utf-8-payload-constraints-dicectf-2026)
-- [Seccomp Bypass](#seccomp-bypass)
-- [RETF Architecture Switch for Seccomp Bypass (Midnightflag 2026)](#retf-architecture-switch-for-seccomp-bypass-midnightflag-2026)
-- [Stack Shellcode with Input Reversal](#stack-shellcode-with-input-reversal)
-- [.fini_array Hijack](#fini_array-hijack)
-- [pwntools Template](#pwntools-template)
-  - [Automated Offset Finding via Corefile (Crypto-Cat)](#automated-offset-finding-via-corefile-crypto-cat)
-- [ret2vdso — Using Kernel vDSO Gadgets (HTB Nowhere to go)](#ret2vdso--using-kernel-vdso-gadgets-htb-nowhere-to-go)
-  - [Step 1 — Stack leak](#step-1--stack-leak)
-  - [Step 2 — Write `/bin/sh` to known address](#step-2--write-binsh-to-known-address)
-  - [Step 3 — Find vDSO base via AT_SYSINFO_EHDR](#step-3--find-vdso-base-via-at_sysinfo_ehdr)
-  - [Step 4 — Dump vDSO and find gadgets](#step-4--dump-vdso-and-find-gadgets)
-  - [Step 5 — execve ROP chain](#step-5--execve-rop-chain)
-- [Vsyscall ROP for PIE Bypass (Hack.lu 2015)](#vsyscall-rop-for-pie-bypass-hacklu-2015)
-- [x32 ABI Syscall Number Aliasing for Seccomp Bypass (BCTF 2017)](#x32-abi-syscall-number-aliasing-for-seccomp-bypass-bctf-2017)
-- [Time-Based Blind Shellcode When write() Blocked (DEF CON 2017)](#time-based-blind-shellcode-when-write-blocked-def-con-2017)
-- [JIT-ROP: Scan for syscall Byte in Leaked libc Function (Codegate 2018)](#jit-rop-scan-for-syscall-byte-in-leaked-libc-function-codegate-2018)
-- [ret2dl_resolve 64-bit (Codegate 2018)](#ret2dl_resolve-64-bit-codegate-2018)
-- [Prime-Only ROP via Goldbach Decomposition (PlaidCTF 2018)](#prime-only-rop-via-goldbach-decomposition-plaidctf-2018)
-- [Imperfect-Gadget Stack Pivot (RITSEC 2018)](#imperfect-gadget-stack-pivot-ritsec-2018)
-- [_fini_array Double-Entry Staged ROP (Insomnihack 2019)](#_fini_array-double-entry-staged-rop-insomnihack-2019)
-- [ret2libc via Statically-Linked libc + Embedded /bin/sh String (TAMUctf 2019)](#ret2libc-via-statically-linked-libc--embedded-binsh-string-tamuctf-2019)
-- [Magic Gadget: `add dword [rbp-0x3d], ebx` from `__do_global_dtors_aux` (N1CTF Junior 2026)](#magic-gadget-add-dword-rbp-0x3d-ebx-from-__do_global_dtors_aux-n1ctf-junior-2026)
-- [Useful Commands](#useful-commands)
-
 For core ROP chain building, ret2csu, bad character bypass, exotic gadgets, and stack pivot via xchg, see [rop-and-shellcode.md](rop-and-shellcode.md).
 
 ---

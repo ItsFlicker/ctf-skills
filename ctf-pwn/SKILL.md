@@ -72,10 +72,9 @@ gem install one_gadget seccomp-tools
 - [kernel.md](kernel.md) - Linux kernel exploitation fundamentals: environment setup, QEMU debug, heap spray structures (tty_struct, poll_list, user_key_payload, seq_operations), kernel stack overflow, canary leak, privilege escalation (ret2usr, kernel ROP), modprobe_path overwrite, core_pattern overwrite, kmalloc size mismatch heap overflow + struct file f_op corruption
 - [kernel-techniques.md](kernel-techniques.md) - Kernel exploitation techniques: tty_struct kROP (fake vtable + stack pivot), AAW via ioctl register control, userfaultfd race stabilization, SLUB allocator internals (freelist hardening/obfuscation), leak via kernel panic, MADV_DONTNEED race window extension (DiceCTF 2026), cross-cache CPU-split attack (DiceCTF 2026), PTE overlap file write (DiceCTF 2026), addr_limit bypass via failed file open for kernel memory read/write
 - [kernel-bypass.md](kernel-bypass.md) - Kernel protection bypass: KASLR/FGKASLR bypass (__ksymtab), KPTI bypass (swapgs trampoline, signal handler, modprobe_path/core_pattern via ROP), SMEP/SMAP bypass, GDB kernel module debugging, initramfs/virtio-9p workflow, exploit templates, exploit delivery
-- [field-notes.md](field-notes.md) - Detailed pwn notes: heap exploitation quick reference, additional exploit notes, useful commands
 - [attack-playbook.md](attack-playbook.md) - Linux userland attack playbook: recon of input/privilege boundaries, leak selection by mitigation, and primitive ranking workflow
 - [static-signals.md](static-signals.md) - Exploit-relevant static signals (libc version, seccomp policy, RELRO/PIE/canary/NX evidence) for exploitability assessment
-- [pwnable-tw/README.md](pwnable-tw/README.md) - 43 pwnable.tw writeups (orw, start, calc, hacknote, babystack, tcache_tear, death_note, dubblesort, applestore, bookwriter, and more) with per-challenge environment, protections, root-cause defects, and concrete exploitation chains
+- Challenge archive (moved out of this skill): the 43 pwnable.tw writeups now live in the sibling `ctf-pwn-writeups` skill - load it to compare against a known challenge, not as a technique reference
 - [tools-mcp.md](tools-mcp.md) - MCP server integration for pwn: WinDbg MCP session model (`open_cdb_dump`/`open_cdb_remote`/`open_kd_session` + `session_id`), crash-dump triage, in-dump `flag{` memory scanning, live breakpoint/hardware-watchpoint/memory-patch exploitation, `!dh -f` Windows mitigation check (the `checksec` equivalent), kernel-mode token stealing with kd; IDA/Ghidra MCP for exploit development (decompile the vulnerable function first, drop to assembly only for exact gadget bytes)
 
 ---
@@ -174,7 +173,7 @@ bash -c '{ echo "cmd1"; echo "cmd2"; sleep 1; } | nc host port'
 - Any **other non-digit** poisons the stream - every following `scanf` fails and all remaining input is ignored.
 - Values inside `long long` but not `int` store only the **low 32 bits**; values outside `long long` store **-1 (`0xffffffff`)**.
 
-Use the `+` skip to write only the slots you need: canary untouched, saved RIP takes the win address. See [overflow-basics.md](overflow-basics.md#scanf-input-quirks-skip-truncate-saturate) and [pwnable-tw/dubblesort.md](pwnable-tw/dubblesort.md).
+Use the `+` skip to write only the slots you need: canary untouched, saved RIP takes the win address. See [overflow-basics.md](overflow-basics.md#scanf-input-quirks-skip-truncate-saturate) and [dubblesort](../ctf-pwn-writeups/pwnable-tw/dubblesort.md).
 
 ## Canary-Aware Partial Overflow
 
@@ -229,13 +228,3 @@ Leak libc via `puts@PLT(puts@GOT)`, return to vuln, stage 2 with `system("/bin/s
 **Neural network function pointer OOB:** When a binary uses NN output as an index into a function pointer array without bounds checking, retrain weights/biases to produce an out-of-bounds index that reads a target address from the biases array. See [advanced-exploits-4.md](advanced-exploits-4.md#neural-network-output-as-function-pointer-index-oob-swampctf-2018).
 
 **Shellcode unique-byte limit bypass via counter overflow:** When shellcode is limited to N unique bytes, spray the stack to corrupt the `seen[256]` counter, then re-execute main (skipping `memset`) so the overflowed counter allows arbitrary bytes on the second run. See [advanced-exploits-4.md](advanced-exploits-4.md#shellcode-unique-byte-limit-bypass-via-counter-overflow-blaze-ctf-2018).
-
-## Deep-Dive Notes
-
-Use [field-notes.md](field-notes.md) once you have confirmed the challenge is truly exploitation-heavy.
-
-- Heap and allocator notes: House of Apple, tcache, unsafe unlink, talloc, UAF, FSOP
-- Advanced exploit notes: seccomp bypass, ret2vdso, io_uring, integer truncation, ASAN, timing oracles
-- Sandbox and hybrid notes: pyjail crossover, busybox escapes, custom VMs, shell tricks, path sanitizers
-- Kernel and Windows notes: kernel playbooks, SEH, CFG bypass, privilege escalation
-- Historical case notes: older but still reusable CTF exploit patterns

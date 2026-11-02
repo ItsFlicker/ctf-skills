@@ -1,26 +1,5 @@
 # CTF Pwn - ROP Chains and Shellcode
 
-## Table of Contents
-- [ROP Chain Building](#rop-chain-building)
-  - [Two-Stage ret2libc (Leak + Shell)](#two-stage-ret2libc-leak--shell)
-  - [Raw Syscall ROP (When system() Fails)](#raw-syscall-rop-when-system-fails)
-  - [rdx Control in ROP Chains](#rdx-control-in-rop-chains)
-  - [Shell Interaction After execve](#shell-interaction-after-execve)
-- [ret2csu — __libc_csu_init Gadgets (Crypto-Cat)](#ret2csu--__libc_csu_init-gadgets-crypto-cat)
-- [Bad Character Bypass via XOR Encoding in ROP (Crypto-Cat)](#bad-character-bypass-via-xor-encoding-in-rop-crypto-cat)
-- [Exotic x86 Gadgets — BEXTR/XLAT/STOSB/PEXT (Crypto-Cat)](#exotic-x86-gadgets--bextrxlatstosbpext-crypto-cat)
-  - [64-bit: BEXTR + XLAT + STOSB](#64-bit-bextr--xlat--stosb)
-  - [32-bit: PEXT (Parallel Bits Extract)](#32-bit-pext-parallel-bits-extract)
-- [Stack Pivot via xchg rax,esp (Crypto-Cat)](#stack-pivot-via-xchg-raxesp-crypto-cat)
-- [sprintf() Gadget Chaining for Bad Character Bypass (PlaidCTF 2013)](#sprintf-gadget-chaining-for-bad-character-bypass-plaidctf-2013)
-- [DynELF Automated Libc Discovery (RC3 CTF 2016)](#dynelf-automated-libc-discovery-rc3-ctf-2016)
-- [Constrained Shellcode in Small Buffers (TUM CTF 2016)](#constrained-shellcode-in-small-buffers-tum-ctf-2016)
-- [Stack Canary XOR Epilogue as RDX Zeroing Gadget (VolgaCTF 2017)](#stack-canary-xor-epilogue-as-rdx-zeroing-gadget-volgactf-2017)
-- [Minimal Shellcode with Pre-Initialized Registers (Square CTF 2017)](#minimal-shellcode-with-pre-initialized-registers-square-ctf-2017)
-- [Unique-Byte Shellcode via syscall RIP to RCX (HITCON 2017)](#unique-byte-shellcode-via-syscall-rip-to-rcx-hitcon-2017)
-- [stub_execveat Syscall as execve Alternative (ASIS CTF 2018)](#stub_execveat-syscall-as-execve-alternative-asis-ctf-2018)
-- [Alphanumeric Shellcode Bootstrap via push/pop When rax=0 (nullcon HackIM 2019)](#alphanumeric-shellcode-bootstrap-via-pushpop-when-rax0-nullcon-hackim-2019)
-
 For double stack pivot, SROP with UTF-8 constraints, RETF architecture switch, seccomp bypass, .fini_array hijack, ret2vdso, pwntools template, and shellcode with input reversal, see [rop-advanced.md](rop-advanced.md).
 
 ---

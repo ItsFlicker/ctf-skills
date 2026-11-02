@@ -6,10 +6,6 @@ binary (decompile the vulnerable function) and **debugging** the exploit
 MCP the authoritative reference is [../ctf-reverse/tools-mcp.md](../ctf-reverse/tools-mcp.md);
 this file covers the pwn-specific angle plus **WinDbg MCP** for Windows targets.
 
-## Table of Contents
-- [WinDbg MCP (Windows Crash Dumps, Live & Kernel Debugging)](#windbg-mcp-windows-crash-dumps-live--kernel-debugging)
-- [IDA / Ghidra MCP for Exploit Development](#ida--ghidra-mcp-for-exploit-development)
-
 ---
 
 ## WinDbg MCP (Windows Crash Dumps, Live & Kernel Debugging)
@@ -34,29 +30,12 @@ Every tool except `list_dumps` is **session-addressed**. `open_*` returns a
 whole challenge, close at the end. This is the single most common failure mode:
 calling `run_cdb_command` without a `session_id` from a live `open_*`.
 
-**User mode (cdb.exe)** — dumps, and live targets over a debug server:
-
-| Tool | Purpose |
-|---|---|
-| `list_dumps(directory_path?, recursive?)` | Enumerate `.dmp` files; no session needed |
-| `open_cdb_dump(dump_path, symbols_path?, include_stack_trace?, include_modules?, include_threads?, timeout_seconds?)` | Load a dump → `session_id`. Auto-runs `.lastevent` + `!analyze -v` |
-| `open_cdb_remote(connection_string, ...)` | Attach to `cdb -server tcp:port=5005 <prog>` → `session_id` |
-| `run_cdb_command(session_id, command, timeout_seconds?)` | Any cdb command |
-| `send_ctrl_break(session_id)` | Break into a *running* live target |
-| `close_cdb_session(session_id)` | Release |
-
-**Kernel mode (kd.exe)** — Windows kernel/driver pwn:
-
-| Tool | Purpose |
-|---|---|
-| `open_kd_session(connection_string, symbols_path?, ...)` | Attach + break in → `session_id` |
-| `run_kd_command(session_id, command, timeout_seconds?)` | Any kd command |
-| `send_ctrl_break(session_id)` | Break into the running kernel |
-| `close_kd_session(session_id, resume=true)` | Release. **`resume=false` leaves the whole target machine frozen** |
-
-Kernel connection strings: KDNET `net:port=50000,key=1.2.3.4`, named pipe
-`com:pipe,port=\\.\pipe\com_1,baud=115200,reconnect,resets=0`, serial
-`com:port=COM1,baud=115200`.
+Session addressing: `open_cdb_dump` / `open_cdb_remote` / `open_kd_session`
+return a `session_id` that every later call must pass back; `list_dumps` is the
+only stateless tool. Kernel connection strings: KDNET `net:port=50000,key=1.2.3.4`,
+named pipe `com:pipe,port=\\.\pipe\com_1,baud=115200,reconnect,resets=0`, serial
+`com:port=COM1,baud=115200`. `close_kd_session resume=false` leaves the target
+machine frozen.
 
 **Symbols are a correctness issue, not a convenience.** Pass
 `symbols_path="srv*C:\symbols*https://msdl.microsoft.com/download/symbols"` on

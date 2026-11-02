@@ -1,19 +1,5 @@
 # CTF Pwn - Sandbox Escape and Restricted Environments
 
-## Table of Contents
-- [Python Sandbox Escape](#python-sandbox-escape)
-- [VM Exploitation (Custom Bytecode)](#vm-exploitation-custom-bytecode)
-- [FUSE/CUSE Character Device Exploitation](#fusecuse-character-device-exploitation)
-- [Busybox/Restricted Shell Escalation](#busyboxrestricted-shell-escalation)
-- [Shell Tricks](#shell-tricks)
-- [Write-Anywhere via /proc/self/mem (BSidesSF 2025)](#write-anywhere-via-procselfmem-bsidessf-2025)
-- [process_vm_readv Failure as Sandbox Escape (0CTF 2016)](#process_vm_readv-failure-as-sandbox-escape-0ctf-2016)
-- [Named Pipe mkfifo for File Size Check Bypass (Nuit du Hack 2016)](#named-pipe-mkfifo-for-file-size-check-bypass-nuit-du-hack-2016)
-- [Lua Integer Underflow via Game Logic (ASIS CTF Finals 2017)](#lua-integer-underflow-via-game-logic-asis-ctf-finals-2017)
-- [CPU Emulator Print Opcode Python eval Injection (Midnight Sun CTF 2018)](#cpu-emulator-print-opcode-python-eval-injection-midnight-sun-ctf-2018)
-- [Unicorn Emulator Syscall Blacklist Bypass via sysenter and Uncommon Syscalls (Meepwn CTF Quals 2018)](#unicorn-emulator-syscall-blacklist-bypass-via-sysenter-and-uncommon-syscalls-meepwn-ctf-quals-2018)
-- [Custom VM swap Pointer Self-Overwrite (HITCON 2018)](#custom-vm-swap-pointer-self-overwrite-hitcon-2018)
-
 ---
 
 ## Python Sandbox Escape
