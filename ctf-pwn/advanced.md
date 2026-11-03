@@ -199,7 +199,7 @@ fake_sym_st_name = fake_string_addr - STRTAB
 
 **Key insight:** ret2dlresolve works without ANY leak. It exploits the lazy binding mechanism: when a PLT function is called for the first time, the dynamic linker looks up the symbol name and resolves it. By forging the lookup structures, you can make it resolve any libc function. Use pwntools' `Ret2dlresolvePayload` for automation.
 
-**Requirements:** Partial RELRO (Full RELRO resolves all symbols at load time, defeating this). Writable memory to place forged structures.
+**Requirements:** Partial RELRO (writable `.got.plt`, lazy binding intact), writable memory for the forged `Elf64_Sym`/`Rela`/string, and control of the reloc index. **Full RELRO kills the classic route, not the technique:** `BIND_NOW` zeroes the `GOT[1]`/`GOT[2]` slots and makes `.got.plt` read-only, but `_dl_runtime_resolve` still lives in `ld.so`. With an ld.so leak, call it yourself - `_dl_runtime_resolve(link_map, index)` with a `link_map*` recovered from `DT_DEBUG`/`_r_debug.r_map` - and point the forged `Elf64_Rela.r_offset` at **writable** memory, since the normal GOT write-back would fault. The resolver then tail-calls the resolved symbol, and the 64-bit `l_info[VERSYMIDX(DT_VERSYM)] = NULL` step still applies. Cost is one extra leak plus manual `_dl_fixup` setup instead of a PLT0 jump. See [T3stzer0 - ret2dlresolve from No RELRO to FULL RELRO](https://www.testzero-wz.com/2022/03/05/Ret2dlresolve%E2%80%94%E2%80%94%E4%BB%8ENo-RELRO%E5%88%B0FULL-RELRO/).
 
 ---
 

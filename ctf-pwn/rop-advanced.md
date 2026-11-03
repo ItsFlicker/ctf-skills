@@ -592,6 +592,10 @@ payload = flat(
 
 **Key insight:** 64-bit ret2dl_resolve is harder than 32-bit because of VERSYM checks. Overwrite `link_map->l_info[DT_VERSYM]` with NULL to skip version validation entirely. Then the standard approach works: forge Rela -> Sym -> dynstr chain in writable memory, trigger resolution via PLT stub with crafted reloc index. This resolves arbitrary libc functions without knowing the libc base — the dynamic linker does the work for you.
 
+### Full RELRO variant
+
+`BIND_NOW` removes the PLT0 entry point (`GOT[1]`/`GOT[2]` are zero, `.got.plt` read-only) but leaves `_dl_runtime_resolve` in `ld.so`. With an ld.so base leak, recover `link_map` (`_r_debug.r_map`, or the pointer `DT_DEBUG` resolves to) and call `_dl_runtime_resolve(link_map, reloc_index)` directly; the forged `Elf64_Rela.r_offset` must point at **writable** memory because the GOT write-back would fault. Only the VERSYM-NULL step and the forgery itself remain - everything else is the partial-RELRO recipe with one extra leak.
+
 **When to recognize:** No libc leak available, Partial RELRO (PLT/GOT writable), binary has enough ROP gadgets to write to BSS and control function arguments. Works on any glibc version (the VERSYM bypass via NULL is universal). Prefer this over blind libc identification when the remote libc version is completely unknown.
 
 **References:** Codegate 2018
