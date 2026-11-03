@@ -57,9 +57,9 @@ gem install one_gadget seccomp-tools
 **Userland memory corruption**
 - [overflow-basics.md](overflow-basics.md) - stack/global overflow, ret2win, canary leaks (incl. fork brute force), scanf quirks, parser memcpy overflow, struct-pointer overwrite
 - [rop-and-shellcode.md](rop-and-shellcode.md) - ret2libc, ret2csu, syscall ROP, rdx control, bad-char XOR, exotic gadgets, stack pivots
-- [rop-advanced.md](rop-advanced.md) - SROP, seccomp bypass, RETF to x32, `.fini_array`, ret2vdso, magic-gadget GOT patching, one-shot string synthesis
+- [rop-advanced.md](rop-advanced.md) - SROP, ret2dl_resolve (incl. Full RELRO), RETF to x32, `.fini_array`, ret2vdso, magic-gadget GOT patching, one-shot string synthesis
 - [format-string.md](format-string.md) - leaks, GOT/`.fini_array` writes, blind pwn, `__free_hook`, ROT13-transformed input
-- [advanced.md](advanced.md) - ret2dlresolve, JIT/UAF patterns, heap overlap, pthread-cancellation takeover
+- [advanced.md](advanced.md) - seccomp argument bypasses, JIT/UAF/heap-overlap patterns, pthread-cancellation takeover (no return address)
 
 **Heap and FILE structures**
 - [heap-techniques.md](heap-techniques.md) - House of Apple 2 / Einherjar / Orange / Spirit / Lore / Force / Botcake, unlink, tcache stash, largebin, allocator ordering rules

