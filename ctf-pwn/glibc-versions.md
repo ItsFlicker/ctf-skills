@@ -125,6 +125,7 @@ The per-thread tcache is no longer created on the first `malloc`; it appears on 
 | `realloc`-driven bin placement | no | no | **yes** (new) | yes |
 | House of Orange (old top released by `sysmalloc`) | yes | yes | yes | yes - destination by size: tcache / smallbin / unsorted |
 | House of Tangerine (calloc grooming) | yes | **no** | **no** | **no** |
+| House of Botcake (bare double free, no edit) | yes | yes | yes | yes - 16 fillers instead of 7 |
 | tcache relative write (`mp_.tcache_bins`) | no | yes | hard | hard; removed in 2.44 |
 | `__free_hook` / `__malloc_hook` | **no** (gone in 2.34) | no | no | no |
 | FSOP / `_IO_FILE` | yes | yes | yes | yes - untouched by these patches |

@@ -62,7 +62,7 @@ gem install one_gadget seccomp-tools
 - [advanced.md](advanced.md) - ret2dlresolve, JIT/UAF patterns, heap overlap, pthread-cancellation takeover
 
 **Heap and FILE structures**
-- [heap-techniques.md](heap-techniques.md) - House of Apple 2 / Einherjar / Orange / Spirit / Lore / Force, unlink, tcache stash, largebin, allocator ordering rules
+- [heap-techniques.md](heap-techniques.md) - House of Apple 2 / Einherjar / Orange / Spirit / Lore / Force / Botcake, unlink, tcache stash, largebin, allocator ordering rules
 - [heap-techniques-2.md](heap-techniques-2.md) - writeup variants: UAF vtable/pointer encoding, residue leaks, cross-bin, custom allocators
 - [heap-fsop.md](heap-fsop.md) - `_IO_FILE` exploitation, vtable bypass, House of Some (+ SomeofHouse)
 - [glibc-versions.md](glibc-versions.md) - 2.41-2.43 allocator changes, dead/alive matrix, fingerprinting
@@ -193,6 +193,7 @@ Only design around SHSTK (ret-less pivots, `setcontext`/unwind tricks) after one
 | `printf` after ROT13 / input transform | [format-string.md](format-string.md) (ROT13) |
 | seccomp on, need file read but no `execve` | [rop-advanced.md](rop-advanced.md) / [advanced.md](advanced.md) |
 | no return address to hijack (CET + full RELRO) | [advanced.md](advanced.md) (pthread cancellation) |
+| double free, but no way to edit the chunk after free | [heap-techniques.md](heap-techniques.md) (House of Botcake) |
 | kernel target | [kernel.md](kernel.md), then objects/bypass/techniques |
 | restricted shell, VM, emulator or jail | [sandbox-escape.md](sandbox-escape.md) (`ctf-misc` for pyjails) |
 | seccomp filter, or a supervisor process inspecting you | [sandbox-escape.md](sandbox-escape.md) (fake filters, `PR_SET_DUMPABLE`) |

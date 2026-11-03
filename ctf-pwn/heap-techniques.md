@@ -490,6 +490,35 @@ malloc(target_size)  # Returns target_addr → arbitrary write!
 
 ---
 
+## House of Botcake — Overlap Out of a Bare Double Free (2.29+)
+
+**When to use:** the only primitive is `free(p)` twice on the same pointer — no UAF edit, no overflow — and the target is glibc 2.29+, where a plain tcache double free aborts (`free(): double free detected in tcache 2`). Botcake turns the second free into a tcache entry that lives *inside* a live unsorted chunk, so the poison write goes through a chunk that is legitimately allocated.
+
+```python
+# heap: [C fillers][prev][a][padding]      C = tcache slots for this bin
+for _ in range(C): free(filler())         # 1. saturate tcache: C=7 (<=2.42), 16 (2.43)
+free(a)                                   # 2. tcache full -> a enters unsorted
+free(prev)                                # 3. forward-consolidates over a
+malloc(0x100)                             # 4. open one slot again
+free(a)                                   # 5. a -> tcache; a[1] still holds the
+                                          #    unsorted bk (libc ptr) != tcache_key
+m = malloc(0x210)                         # 6. merged chunk; request must miss the tcache bin
+off = a - m                               #    0x110 only when C == slot count
+write(m + off, p64((a >> 12) ^ target))   #    2.32+ mangled: needs a heap leak
+malloc(0x100)                             # 7. returns a, tcache top -> target
+malloc(0x100)                             #    returns target
+```
+
+**The filler count is the version switch.** `TCACHE_FILL_COUNT` is 7 through 2.42 and 16 in 2.43 (`0b9210bd`). Hardcode 7 against 2.43 and step 2 never reaches unsorted: `a` goes straight into tcache, step 3 has nothing to consolidate, and step 5 aborts with the very `double free detected in tcache 2` the technique exists to avoid. Probe instead of assuming — free `k` chunks, then read the next free's `fd`: a libc pointer means unsorted, a mangled heap-looking value means tcache.
+
+**Extra fillers still work, but they move the offset.** Fillers that spill past the tcache sit directly before `prev`, so `free(prev)` also merges backwards. Measured offsets from the returned chunk to `a`: `0x110` (C fillers), `0x220` (C+1), `0xaa0` (16 fillers on 2.39, where only 7 fit). Always compute `off = a - m`; a hardcoded `0x110` writes into the wrong field and the final malloc returns garbage.
+
+**Size class and layout:** request `>= 0x80` so the free with a full tcache reaches unsorted instead of fastbin (on <= 2.42 — fastbin is gone in 2.43); keep the chunk `<= 0x410` (request `<= 0x400`) unless the target raises `glibc.malloc.tcache_max` (2.42+). The `padding` chunk after `a` is required, otherwise `free(a)` merges into top.
+
+**Verified:** 2.39-0ubuntu8.7 and 2.42-0ubuntu3 pass with C=7/off `0x110`; 2.43-2ubuntu2 passes with C=16/off `0x110` and aborts with C=7. Before 2.29 there is no key check — a plain double free plus an unmangled poison is shorter.
+
+---
+
 ## Unsafe Unlink to BSS + Top Chunk Consolidation (SECCON 2016)
 
 **Pattern:** After a classic unsafe unlink writes a self-referential pointer into a BSS note table, craft a second fake chunk in BSS whose size spans from the BSS address to the heap's top chunk: `size = (heap_top_addr - bss_fake_addr) | PREV_INUSE`. Freeing this fake chunk consolidates it with the top chunk, effectively relocating the heap's allocation base into BSS. Subsequent malloc calls return memory overlapping the global pointer table, granting arbitrary read/write.
