@@ -2,6 +2,8 @@
 
 USMA is the shortest path from "I can overwrite 8 bytes of a kernel heap object" to "I am root" when the target has CFI, CET, or simply no usable gadgets. It does not hijack a function pointer at all: it makes the kernel map one of its own text pages into userspace, and patches the code directly.
 
+**Not the same thing as page-UAF chains.** USMA maps a *kernel text page that is still allocated*, through `vm_insert_page`; it never frees or recycles a page, never touches page tables, and needs no race. Techniques that free a physical page and re-claim it as a PTE page or `pipe_buffer` (cross-cache, the `io_uring` PBUF UAF) share only the phrase "map kernel memory". Conflating the two gives an exploit that does nothing - if a write-up describes USMA as "reuse the freed page as a page table", it is describing a different technique.
+
 ## Why CFI does not stop it
 
 kCFI (`CONFIG_CFI_CLANG`) puts a type hash before every indirectly-callable function and checks it at each indirect call site. Every classic pivot - fake vtable, `ops->func`, `seq_operations->start`, `modprobe_path` + `call_usermodehelper` - is an indirect call to an attacker-chosen target, so it has to match a type hash, and gadgets never do.

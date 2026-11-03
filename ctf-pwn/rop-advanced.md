@@ -562,6 +562,16 @@ payload = flat(
 
 **Key insight:** 64-bit ret2dl_resolve is harder than 32-bit because of VERSYM checks. Overwrite `link_map->l_info[DT_VERSYM]` with NULL to skip version validation entirely. Then the standard approach works: forge Rela -> Sym -> dynstr chain in writable memory, trigger resolution via PLT stub with crafted reloc index. This resolves arbitrary libc functions without knowing the libc base — the dynamic linker does the work for you.
 
+### No leak at all - forge the `link_map`
+
+With no leak there is no real `link_map` to borrow, so supply one in writable memory (`l_info[DT_SYMTAB]`/`[DT_STRTAB]`/`[DT_JMPREL]` pointing at forged entries) and satisfy one relation:
+
+```
+l_addr = RVA(target) - RVA(known_func)
+```
+
+`_dl_fixup` returns `value = l->l_addr + sym->st_value`, and the forged `Elf64_Sym` overlaps a real, already-resolved GOT entry, so `st_value` holds that symbol's *runtime* address. The relation makes `RVA(target) - RVA(known) + VA(known) = VA(target)`. Two consequences: `st_other` must land on a non-zero byte (the `0x7f` inside a resolved libc pointer) so `_dl_fixup` takes the `st_other != 0` branch, and the forged structures need a known (non-PIE) address - otherwise leak one byte first.
+
 ### Full RELRO variant
 
 `BIND_NOW` removes the PLT0 entry point (`GOT[1]`/`GOT[2]` are zero, `.got.plt` read-only) but leaves `_dl_runtime_resolve` in `ld.so`. With an ld.so base leak, recover `link_map` (`_r_debug.r_map`, or the pointer `DT_DEBUG` resolves to) and call `_dl_runtime_resolve(link_map, reloc_index)` directly; the forged `Elf64_Rela.r_offset` must point at **writable** memory because the GOT write-back would fault. Only the VERSYM-NULL step and the forgery itself remain - everything else is the partial-RELRO recipe with one extra leak.

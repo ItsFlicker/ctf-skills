@@ -194,6 +194,7 @@ Only design around SHSTK (ret-less pivots, `setcontext`/unwind tricks) after one
 | seccomp on, need file read but no `execve` | [rop-advanced.md](rop-advanced.md) / [advanced.md](advanced.md) |
 | no return address to hijack (CET + full RELRO) | [advanced.md](advanced.md) (pthread cancellation) |
 | double free, but no way to edit the chunk after free | [heap-techniques.md](heap-techniques.md) (House of Botcake) |
+| no leak at all, but a writable region and partial RELRO | [rop-advanced.md](rop-advanced.md) (ret2dl_resolve, forged `link_map`) |
 | kernel target | [kernel.md](kernel.md), then objects/bypass/techniques |
 | restricted shell, VM, emulator or jail | [sandbox-escape.md](sandbox-escape.md) (`ctf-misc` for pyjails) |
 | seccomp filter, or a supervisor process inspecting you | [sandbox-escape.md](sandbox-escape.md) (fake filters, `PR_SET_DUMPABLE`) |
