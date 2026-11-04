@@ -59,13 +59,13 @@ gem install one_gadget seccomp-tools
 - [rop-and-shellcode.md](rop-and-shellcode.md) - ret2libc, ret2csu, syscall ROP, rdx control, bad-char XOR, exotic gadgets, stack pivots
 - [rop-advanced.md](rop-advanced.md) - SROP, ret2dl_resolve (incl. Full RELRO), RETF to x32, `.fini_array`, ret2vdso, magic-gadget GOT patching, one-shot string synthesis
 - [format-string.md](format-string.md) - leaks, GOT/`.fini_array` writes, blind pwn, `__free_hook`, ROT13-transformed input
-- [advanced.md](advanced.md) - seccomp argument bypasses, JIT/UAF/heap-overlap patterns, pthread-cancellation takeover (no return address)
+- [advanced.md](advanced.md) - seccomp argument bypasses, JIT/UAF/heap-overlap patterns, pthread-cancellation takeover via `_Unwind_ForcedUnwind`'s indirect jmp (no return address)
 
 **Heap and FILE structures**
 - [heap-techniques.md](heap-techniques.md) - House of Apple 2 / Einherjar / Orange / Spirit / Lore / Force / Botcake, unlink, tcache stash, largebin, allocator ordering rules
 - [heap-techniques-2.md](heap-techniques-2.md) - writeup variants: UAF vtable/pointer encoding, residue leaks, cross-bin, custom allocators
 - [heap-fsop.md](heap-fsop.md) - `_IO_FILE` exploitation, vtable bypass, House of Some (+ SomeofHouse)
-- [glibc-versions.md](glibc-versions.md) - 2.41-2.43 allocator changes, dead/alive matrix, fingerprinting
+- [glibc-versions.md](glibc-versions.md) - 2.41-2.43 allocator changes (2.43: fastbin gone, tcache 16 slots, mmap size -0x10), dead/alive matrix, fingerprinting
 
 **Challenge case files** (per-challenge notes, not first-line reference)
 - [advanced-exploits.md](advanced-exploits.md), [advanced-exploits-2.md](advanced-exploits-2.md), [advanced-exploits-3.md](advanced-exploits-3.md), [advanced-exploits-4.md](advanced-exploits-4.md), [advanced-exploits-5.md](advanced-exploits-5.md) - parts 1-5: VM/JIT/type confusion, FSOP/TLS/shadow-stack, environment/format/canary cases, Windows/ARM/Forth/Game-of-Life, data-interpretation cases
